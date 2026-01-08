@@ -1,0 +1,783 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model users {
+  id                                       Int                 @id @default(autoincrement())
+  google_id                                String?             @unique
+  username                                 String              @unique @db.VarChar(100)
+  email                                    String              @unique @db.VarChar(255)
+  password_hash                            String              @db.VarChar(255)
+  first_name                               String?             @db.VarChar(100)
+  last_name                                String?             @db.VarChar(100)
+  phone_number                             String?             @db.VarChar(20)
+  address                                  String?
+  city                                     String?             @db.VarChar(100)
+  province                                 String?             @db.VarChar(100)
+  country                                  String?             @db.VarChar(100)
+  postal_code                              String?             @db.VarChar(10)
+  date_of_birth                            DateTime?           @db.Date
+  gender                                   String?             @db.VarChar(10) // ENUM 'M', 'F', 'Other'
+  profile_picture_url                      String?
+  user_role_id                             Int
+  status                                   String?             @default("active") @db.VarChar(50) // ENUM 'active', 'inactive', 'suspended'
+  last_login_at                            DateTime?           @db.Timestamptz(6)
+  metadata_json                            Json?
+  internal_notes                           String?
+  created_at                               DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at                               DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
+  user_roles                               user_roles          @relation(fields: [user_role_id], references: [id], onDelete: Restrict)
+  user_roles_last_modified_by_usersTousers user_roles[]        @relation("user_roles_last_modified_byTousers")
+  subjects                                 subjects[]          @relation("SubjectLastReviewedBy")
+  topics                                   topics[]            @relation("TopicLastUpdatedBy")
+  question_banks_created_by                question_banks[]    @relation("QuestionBankCreatedBy")
+  question_banks_reviewed_by               question_banks[]    @relation("QuestionBankReviewedBy")
+  questions_created_by                     questions[]         @relation("QuestionCreatedBy")
+  questions_reviewed_by                    questions[]         @relation("QuestionReviewedBy")
+  answers                                  answers[]           @relation("AnswerLastModifiedBy")
+  question_bank_items_added_by             question_bank_items[] @relation("QuestionBankItemAddedBy")
+  orders                                   orders[]
+  payments                                 payments[]
+  courses_instructor                       courses[]           @relation("CourseInstructor")
+  courses_created_by                       courses[]           @relation("CourseCreatedBy")
+  modules                                  modules[]           @relation("ModuleLastModifiedBy")
+  lessons                                  lessons[]           @relation("LessonLastUpdatedBy")
+  user_courses                             user_courses[]
+  progress_tracking                        progress_tracking[]
+  exams_created_by                         exams[]             @relation("ExamCreatedBy")
+  exam_questions                           exam_questions[]    @relation("ExamQuestionAddedBy")
+  user_exams                               user_exams[]
+  user_exam_answers_grader                 user_exam_answers[] @relation("UserExamAnswerGrader")
+  user_exam_answers_last_modified          user_exam_answers[] @relation("UserExamAnswerLastModifiedBy")
+  notifications_received                   notifications[]     @relation("NotificationsReceived")
+  notifications_sent                       notifications[]     @relation("NotificationSender")
+  reviews_submitted                        reviews[]           @relation("ReviewsSubmitted")
+  reviews_approved                         reviews[]           @relation("ReviewApprovedBy")
+  coupons_created_by                       coupons[]           @relation("CouponCreatedBy")
+  coupons_last_modified_by                 coupons[]           @relation("CouponLastModifiedBy")
+  certificates                             certificates[]      @relation("UserCertificates")
+  assets                                   assets[]            @relation("AssetUploadedBy")
+}
+
+model user_roles {
+  id                        Int      @id @default(autoincrement())
+  role_name                 String   @unique @db.VarChar(100)
+  description               String?
+  permissions_json          Json?
+  can_manage_users          Boolean? @default(false)
+  can_create_content        Boolean? @default(false)
+  can_view_reports          Boolean? @default(false)
+  can_access_admin_panel    Boolean? @default(false)
+  hierarchy_level           Int?     @default(1)
+  is_system_role            Boolean? @default(false)
+  default_dashboard_url     String?
+  api_access_level          String?  @db.VarChar(50)
+  related_module_access     Json?
+  audit_log_json            Json?
+  internal_comments         String?
+  external_reference_id     String?  @db.VarChar(100)
+  version_control           String?  @db.VarChar(50)
+  last_modified_by          Int?
+  is_active                 Boolean? @default(true)
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  users                     users[]
+  last_modified_by_user     users?   @relation("user_roles_last_modified_byTousers", fields: [last_modified_by], references: [id])
+}
+
+model subjects {
+  id                        Int      @id @default(autoincrement())
+  subject_name              String   @unique @db.VarChar(255)
+  description               String?
+  icon_url                  String?
+  is_active                 Boolean? @default(true)
+  total_questions_count     Int?     @default(0)
+  total_courses_count       Int?     @default(0)
+  average_difficulty        Decimal? @db.Decimal(3, 2)
+  related_field_of_study    String?  @db.VarChar(255)
+  syllabus_outline          String?
+  external_resource_links   Json?
+  suggested_grade_levels    String?  @db.VarChar(100)
+  common_misconceptions     String?
+  key_concepts              String?
+  learning_objectives       String?
+  assessment_methods        String?
+  last_reviewed_by          Int?
+  metadata_json             Json?
+  internal_notes            String?
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  topics                    topics[]
+  question_banks            question_banks[]
+  questions                 questions[]
+  courses                   courses[]
+  exams                     exams[]
+  last_reviewed_by_user     users?   @relation("SubjectLastReviewedBy", fields: [last_reviewed_by], references: [id])
+}
+
+model topics {
+  id                          Int      @id @default(autoincrement())
+  topic_name                  String   @db.VarChar(255)
+  subject_id                  Int
+  description                 String?
+  total_questions_count       Int?     @default(0)
+  total_lessons_count         Int?     @default(0)
+  average_score               Decimal? @db.Decimal(5, 2)
+  prerequisite_topics         Json?
+  related_keywords            String?
+  learning_materials_suggested String?
+  common_errors               String?
+  historical_context          String?
+  real_world_applications     String?
+  learning_tips               String?
+  quiz_average_score          Decimal? @db.Decimal(5, 2)
+  revision_frequency          Int?     @default(0)
+  is_advanced                 Boolean? @default(false)
+  external_reference_id       String?  @db.VarChar(100)
+  last_updated_by             Int?
+  metadata_json               Json?
+  internal_notes              String?
+  created_at                  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  subject                     subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  last_updated_by_user        users?   @relation("TopicLastUpdatedBy", fields: [last_updated_by], references: [id])
+  question_banks              question_banks[]
+  questions                   questions[]
+}
+
+model question_banks {
+  id                          Int      @id @default(autoincrement())
+  bank_name                   String   @db.VarChar(255)
+  description                 String?
+  subject_id                  Int
+  topic_id                    Int?
+  price                       Decimal? @default(0.00) @db.Decimal(10, 2)
+  status                      String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
+  total_questions             Int?     @default(0)
+  access_duration_days        Int?
+  last_reviewed_at            DateTime? @db.Timestamptz(6)
+  reviewed_by_user_id         Int?
+  version_number              String?  @db.VarChar(50)
+  language                    String?  @default("id") @db.VarChar(50)
+  target_audience             String?
+  usage_guidelines            String?
+  licensing_details           String?
+  is_premium                  Boolean? @default(false)
+  tags                        Json?
+  average_completion_time_minutes Int?
+  external_id                 String?  @db.VarChar(100)
+  metadata_json               Json?
+  internal_notes              String?
+  created_by_user_id          Int
+  created_at                  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  subject                     subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  topic                       topics?  @relation(fields: [topic_id], references: [id], onDelete: SetNull)
+  created_by_user             users    @relation("QuestionBankCreatedBy", fields: [created_by_user_id], references: [id])
+  reviewed_by_user            users?   @relation("QuestionBankReviewedBy", fields: [reviewed_by_user_id], references: [id])
+  questions                   questions[] @relation("questions_question_bank_id_fkey")
+  question_bank_items         question_bank_items[]
+}
+
+model questions {
+  id                      Int      @id @default(autoincrement())
+  question_bank_id        Int?
+  subject_id              Int
+  topic_id                Int?
+  question_text           String
+  question_type           String   @db.VarChar(50) // ENUM 'multiple_choice', 'essay', 'true_false', 'fill_in_the_blank'
+  difficulty_level        String?  @default("medium") @db.VarChar(50) // ENUM 'easy', 'medium', 'hard'
+  image_url               String?
+  audio_url               String?
+  video_url               String?
+  explanation_text        String?
+  correct_answer_id       Int?
+  points                  Int?     @default(1)
+  time_limit_per_question Int?
+  tags                    Json?
+  is_active               Boolean? @default(true)
+  created_by_user_id      Int
+  reviewed_by_user_id     Int?
+  last_review_date        DateTime? @db.Timestamptz(6)
+  source_reference        String?
+  common_mistakes         String?
+  metadata_json           Json?
+  internal_notes          String?
+  created_at              DateTime @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  question_bank           question_banks? @relation("questions_question_bank_id_fkey", fields: [question_bank_id], references: [id], onDelete: SetNull)
+  subject                 subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  topic                   topics?  @relation(fields: [topic_id], references: [id], onDelete: SetNull)
+  answers                 answers[]
+  question_bank_items     question_bank_items[]
+  exam_questions          exam_questions[]
+  user_exam_answers       user_exam_answers[]
+  created_by_user         users    @relation("QuestionCreatedBy", fields: [created_by_user_id], references: [id])
+  reviewed_by_user        users?   @relation("QuestionReviewedBy", fields: [reviewed_by_user_id], references: [id])
+}
+
+model answers {
+  id                          Int      @id @default(autoincrement())
+  question_id                 Int
+  answer_text                 String
+  is_correct                  Boolean? @default(false)
+  feedback_text               String?
+  image_url                   String?
+  order_number                Int?
+  points_if_selected          Int?     @default(0)
+  justification_for_correct   String?
+  alternative_answer_forms    String?
+  source_reference            String?
+  version_id                  String?  @db.VarChar(50)
+  external_id                 String?  @db.VarChar(100)
+  last_modified_by            Int?
+  is_active                   Boolean? @default(true)
+  metadata_json               Json?
+  internal_notes              String?
+  created_at                  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  question                    questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  last_modified_by_user       users?   @relation("AnswerLastModifiedBy", fields: [last_modified_by], references: [id])
+  user_exam_answers           user_exam_answers[]
+}
+
+model question_bank_items {
+  id                           Int      @id @default(autoincrement())
+  question_bank_id             Int
+  question_id                  Int
+  order_in_bank                Int?
+  difficulty_override          String?  @db.VarChar(50)
+  is_required                  Boolean? @default(false)
+  points_override              Int?
+  time_limit_override_seconds  Int?
+  notes_for_this_item          String?
+  category_in_bank             String?  @db.VarChar(100)
+  added_by_user_id             Int?
+  status_in_bank               String?  @db.VarChar(50)
+  last_modified_date           DateTime? @db.Timestamptz(6)
+  version_control              String?  @db.VarChar(50)
+  external_reference_id        String?  @db.VarChar(100)
+  metadata_json                Json?
+  internal_comments            String?
+  related_tags                 Json?
+  created_at                   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  question_bank                question_banks @relation(fields: [question_bank_id], references: [id], onDelete: Cascade)
+  question                     questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  added_by_user                users?   @relation("QuestionBankItemAddedBy", fields: [added_by_user_id], references: [id])
+
+  @@unique([question_bank_id, question_id])
+}
+
+model orders {
+  id                 Int      @id @default(autoincrement())
+  user_id            Int
+  order_date         DateTime @default(now()) @db.Timestamptz(6)
+  total_amount       Decimal  @db.Decimal(10, 2)
+  payment_status     String?  @default("pending") @db.VarChar(50) // ENUM 'pending', 'paid', 'failed', 'refunded'
+  shipping_address   String?
+  coupon_code        String?  @db.VarChar(50)
+  discount_amount    Decimal? @default(0.00) @db.Decimal(10, 2)
+  tax_amount         Decimal? @default(0.00) @db.Decimal(10, 2)
+  grand_total        Decimal  @db.Decimal(10, 2)
+  payment_method     String?  @db.VarChar(100)
+  transaction_id     String?  @unique @db.VarChar(255)
+  order_status       String?  @default("created") @db.VarChar(50) // ENUM 'created', 'processing', 'completed', 'cancelled'
+  notes              String?
+  billing_address    String?
+  ip_address         String?
+  device_info        String?
+  currency           String?  @default("IDR") @db.VarChar(10)
+  delivery_status    String?  @default("N/A") @db.VarChar(50)
+  tracking_number    String?  @db.VarChar(100)
+  internal_remarks   String?
+  metadata_json      Json?
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user               users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  order_items        order_items[]
+  payments           payments[]
+}
+
+model order_items {
+  id                   Int      @id @default(autoincrement())
+  order_id             Int
+  item_type            String   @db.VarChar(50) // ENUM 'question_bank', 'course', 'exam_access'
+  item_id              Int
+  quantity             Int?     @default(1)
+  price_per_item       Decimal  @db.Decimal(10, 2)
+  total_price          Decimal  @db.Decimal(10, 2)
+  item_name            String   @db.VarChar(255)
+  notes                String?
+  access_granted       Boolean? @default(false)
+  access_start_date    DateTime? @db.Timestamptz(6)
+  access_end_date      DateTime? @db.Timestamptz(6)
+  license_key          String?  @db.VarChar(255)
+  download_link        String?
+  refund_status        String?  @default("none") @db.VarChar(50)
+  refund_amount        Decimal? @default(0.00) @db.Decimal(10, 2)
+  metadata_json        Json?
+  internal_comments    String?
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  order                orders   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+}
+
+model payments {
+  id                    Int      @id @default(autoincrement())
+  order_id              Int
+  user_id               Int
+  amount                Decimal  @db.Decimal(10, 2)
+  payment_method        String   @db.VarChar(100)
+  transaction_id        String   @unique @db.VarChar(255)
+  payment_status        String?  @default("pending") @db.VarChar(50) // ENUM 'pending', 'success', 'failed', 'refunded'
+  payment_date          DateTime @default(now()) @db.Timestamptz(6)
+  currency              String?  @default("IDR") @db.VarChar(10)
+  gateway_response      String?
+  fees                  Decimal? @default(0.00) @db.Decimal(10, 2)
+  refund_status         String?  @default("none") @db.VarChar(50) // ENUM 'none', 'partial', 'full'
+  refund_date           DateTime? @db.Timestamptz(6)
+  receipt_url           String?
+  notes                 String?
+  captured_at           DateTime? @db.Timestamptz(6)
+  authorization_code    String?  @db.VarChar(100)
+  payment_gateway_name  String?  @db.VarChar(100)
+  error_code            String?  @db.VarChar(50)
+  error_message         String?
+  internal_reference    String?
+  metadata_json         Json?
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  order                 orders   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  user                  users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_courses          user_courses[]
+}
+
+model courses {
+  id                   Int      @id @default(autoincrement())
+  course_title         String   @db.VarChar(255)
+  description          String?
+  subject_id           Int
+  difficulty_level     String?  @default("beginner") @db.VarChar(50) // ENUM 'beginner', 'intermediate', 'advanced'
+  price                Decimal? @default(0.00) @db.Decimal(10, 2)
+  duration_hours       Int?
+  instructor_id        Int?
+  status               String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
+  thumbnail_url        String?
+  introduction_video_url String?
+  prerequisites        String?
+  learning_outcomes    String?
+  enrollment_count     Int?     @default(0)
+  rating               Decimal? @default(0.00) @db.Decimal(3, 2)
+  review_count         Int?     @default(0)
+  last_updated         DateTime @default(now()) @db.Timestamptz(6)
+  syllabus_pdf_url     String?
+  certification_available Boolean? @default(false)
+  external_course_id   String?  @db.VarChar(100)
+  metadata_json        Json?
+  internal_notes       String?
+  created_by_user_id   Int
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  subject              subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  instructor           users?   @relation("CourseInstructor", fields: [instructor_id], references: [id], onDelete: SetNull)
+  created_by_user      users    @relation("CourseCreatedBy", fields: [created_by_user_id], references: [id])
+  modules              modules[]
+  user_courses         user_courses[]
+  progress_tracking    progress_tracking[]
+  certificates         certificates[]
+}
+
+model modules {
+  id                                Int      @id @default(autoincrement())
+  course_id                         Int
+  module_title                      String   @db.VarChar(255)
+  description                       String?
+  module_order                      Int
+  duration_minutes                  Int?
+  is_free_preview                   Boolean? @default(false)
+  status                            String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
+  total_lessons                     Int?     @default(0)
+  quiz_id                           Int?
+  learning_objectives               String?
+  resources_links                   Json?
+  estimated_completion_time_minutes Int?
+  module_dependency                 Json?
+  version_number                    String?  @db.VarChar(50)
+  external_reference_id             String?  @db.VarChar(100)
+  last_modified_by                  Int?
+  metadata_json                     Json?
+  internal_notes                    String?
+  created_at                        DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                        DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  course                            courses  @relation(fields: [course_id], references: [id], onDelete: Cascade)
+  last_modified_by_user             users?   @relation("ModuleLastModifiedBy", fields: [last_modified_by], references: [id])
+  lessons                           lessons[]
+  progress_tracking                 progress_tracking[]
+}
+
+model lessons {
+  id                                Int      @id @default(autoincrement())
+  module_id                         Int
+  lesson_title                      String   @db.VarChar(255)
+  lesson_type                       String   @db.VarChar(50) // ENUM 'video', 'text', 'quiz', 'assignment', 'file'
+  content_url                       String?
+  content_text                      String?
+  duration_minutes                  Int?
+  is_completed                      Boolean? @default(false)
+  is_preview                      Boolean? @default(false)
+  order_in_module                   Int
+  quiz_id                           Int?
+  discussion_forum_link             String?
+  attachments_json                  Json?
+  notes_for_lesson                  String?
+  resource_links_json               Json?
+  status                            String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
+  estimated_reading_time_minutes    Int?
+  transcription_text                String?
+  tags                              Json?
+  version_id                        String?  @db.VarChar(50)
+  external_asset_id                 String?  @db.VarChar(100)
+  last_updated_by                   Int?
+  metadata_json                     Json?
+  internal_comments                 String?
+  created_at                        DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                        DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  module                            modules  @relation(fields: [module_id], references: [id], onDelete: Cascade)
+  last_updated_by_user              users?   @relation("LessonLastUpdatedBy", fields: [last_updated_by], references: [id])
+  progress_tracking                 progress_tracking[]
+}
+
+model user_courses {
+  id                      Int      @id @default(autoincrement())
+  user_id                 Int
+  course_id               Int
+  enrollment_date         DateTime @default(now()) @db.Timestamptz(6)
+  completion_date         DateTime? @db.Timestamptz(6)
+  progress_percentage     Decimal? @default(0.00) @db.Decimal(5, 2)
+  status                  String?  @default("in_progress") @db.VarChar(50) // ENUM 'in_progress', 'completed', 'dropped', 'paused'
+  last_accessed_at        DateTime @default(now()) @db.Timestamptz(6)
+  certificate_url         String?
+  score                   Decimal? @db.Decimal(5, 2)
+  review_given            Boolean? @default(false)
+  rating_given            Int?
+  payment_id              Int?
+  access_source           String?  @db.VarChar(100)
+  enrollment_method       String?  @db.VarChar(100)
+  time_spent_total_minutes Int?
+  feedback_notes          String?
+  internal_tracking_id    String?  @db.VarChar(100)
+  metadata_json           Json?
+  created_at              DateTime @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user                    users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  course                  courses  @relation(fields: [course_id], references: [id], onDelete: Cascade)
+  payment                 payments? @relation(fields: [payment_id], references: [id])
+
+  @@unique([user_id, course_id])
+}
+
+model progress_tracking {
+  id                          Int      @id @default(autoincrement())
+  user_id                     Int
+  lesson_id                   Int
+  course_id                   Int
+  module_id                   Int
+  is_completed                Boolean? @default(false)
+  completion_timestamp        DateTime? @db.Timestamptz(6)
+  time_spent_seconds          Int?     @default(0)
+  last_accessed_timestamp     DateTime @default(now()) @db.Timestamptz(6)
+  notes                       String?
+  score                       Decimal? @db.Decimal(5, 2)
+  attempts_count              Int?     @default(0)
+  watched_percentage          Decimal? @db.Decimal(5, 2)
+  read_progress_percentage    Decimal? @db.Decimal(5, 2)
+  last_interaction_type       String?  @db.VarChar(50)
+  device_used                 String?  @db.VarChar(100)
+  ip_address                  String?
+  browser_info                String?
+  session_id                  String?  @db.VarChar(255)
+  internal_debug_info         String?
+  metadata_json               Json?
+  created_at                  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user                        users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  lesson                      lessons  @relation(fields: [lesson_id], references: [id], onDelete: Cascade)
+  course                      courses  @relation(fields: [course_id], references: [id], onDelete: Cascade)
+  module                      modules  @relation(fields: [module_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, lesson_id])
+}
+
+model exams {
+  id                      Int      @id @default(autoincrement())
+  exam_name               String   @db.VarChar(255)
+  description             String?
+  subject_id              Int
+  duration_minutes        Int
+  start_time              DateTime? @db.Timestamptz(6)
+  end_time                DateTime? @db.Timestamptz(6)
+  total_questions         Int?     @default(0)
+  passing_score           Decimal? @db.Decimal(5, 2)
+  attempts_allowed        Int?     @default(1)
+  exam_type               String   @db.VarChar(50) // ENUM 'tryout', 'quiz', 'final_exam', 'practice'
+  status                  String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'closed', 'archived'
+  price                   Decimal? @default(0.00) @db.Decimal(10, 2)
+  available_until         DateTime? @db.Timestamptz(6)
+  created_by_user_id      Int
+  randomize_questions     Boolean? @default(true)
+  randomize_answers       Boolean? @default(true)
+  show_results_immediately Boolean? @default(false)
+  feedback_level          String?  @db.VarChar(50)
+  certification_on_pass   Boolean? @default(false)
+  external_exam_id        String?  @db.VarChar(100)
+  metadata_json           Json?
+  internal_notes          String?
+  created_at              DateTime @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  subject                 subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
+  created_by_user         users    @relation("ExamCreatedBy", fields: [created_by_user_id], references: [id], onDelete: Restrict)
+  exam_questions          exam_questions[]
+  user_exams              user_exams[]
+  certificates            certificates[]
+}
+
+model exam_questions {
+  id                           Int      @id @default(autoincrement())
+  exam_id                      Int
+  question_id                  Int
+  order_in_exam                Int?
+  points_for_question          Decimal? @default(1.0) @db.Decimal(5, 2)
+  section_name                 String?  @db.VarChar(100)
+  is_bonus_question            Boolean? @default(false)
+  time_limit_override_seconds  Int?
+  difficulty_override          String?  @db.VarChar(50)
+  notes_for_examiner           String?
+  internal_category            String?  @db.VarChar(100)
+  version_id                   String?  @db.VarChar(50)
+  added_by_user_id             Int?
+  last_modified_date           DateTime? @db.Timestamptz(6)
+  external_reference_id        String?  @db.VarChar(100)
+  metadata_json                Json?
+  internal_comments            String?
+  created_at                   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  exam                         exams    @relation(fields: [exam_id], references: [id], onDelete: Cascade)
+  question                     questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  added_by_user                users?   @relation("ExamQuestionAddedBy", fields: [added_by_user_id], references: [id])
+
+  @@unique([exam_id, question_id])
+}
+
+model user_exams {
+  id                   Int      @id @default(autoincrement())
+  user_id              Int
+  exam_id              Int
+  start_time           DateTime @default(now()) @db.Timestamptz(6)
+  end_time             DateTime? @db.Timestamptz(6)
+  score                Decimal? @db.Decimal(5, 2)
+  is_completed         Boolean? @default(false)
+  submission_time      DateTime? @db.Timestamptz(6)
+  attempts_count       Int?     @default(1)
+  status               String?  @default("started") @db.VarChar(50) // ENUM 'started', 'submitted', 'graded', 'abandoned'
+  notes                String?
+  ip_address           String?
+  device_info          String?
+  time_taken_seconds   Int?
+  passing_status       Boolean?
+  certificate_issued   Boolean? @default(false)
+  proctoring_status    String?  @db.VarChar(50)
+  final_grade          String?  @db.VarChar(10)
+  exam_version_taken   String?  @db.VarChar(50)
+  external_session_id  String?  @db.VarChar(100)
+  metadata_json        Json?
+  internal_remarks     String?
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user                 users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  exam                 exams    @relation(fields: [exam_id], references: [id], onDelete: Cascade)
+  user_exam_answers    user_exam_answers[]
+
+  @@unique([user_id, exam_id, attempts_count])
+}
+
+model user_exam_answers {
+  id                      Int      @id @default(autoincrement())
+  user_exam_id            Int
+  question_id             Int
+  user_answer             String?
+  selected_answer_id      Int?
+  is_correct              Boolean?
+  points_earned           Decimal? @db.Decimal(5, 2)
+  time_taken_seconds      Int?
+  feedback_given          String?
+  review_status           String?  @default("pending") @db.VarChar(50) // ENUM 'pending', 'reviewed', 'auto_graded'
+  attempt_number          Int @default(1)
+  user_input_hash         String?  @db.VarChar(255)
+  submission_timestamp    DateTime? @db.Timestamptz(6)
+  raw_response_json       Json?
+  scoring_logic_version   String?  @db.VarChar(50)
+  ai_grading_result       Json?
+  grader_user_id          Int?
+  last_modified_by        Int?
+  metadata_json           Json?
+  internal_comments       String?
+  created_at              DateTime @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user_exam               user_exams @relation(fields: [user_exam_id], references: [id], onDelete: Cascade)
+  question                questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  selected_answer         answers? @relation(fields: [selected_answer_id], references: [id], onDelete: SetNull)
+  grader_user             users?   @relation("UserExamAnswerGrader", fields: [grader_user_id], references: [id])
+  last_modified_by_user   users?   @relation("UserExamAnswerLastModifiedBy", fields: [last_modified_by], references: [id])
+  
+
+  @@unique([user_exam_id, question_id, attempt_number])
+}
+
+model notifications {
+  id                   Int      @id @default(autoincrement())
+  user_id              Int
+  notification_type    String   @db.VarChar(50)
+  title                String   @db.VarChar(255)
+  message              String
+  is_read              Boolean? @default(false)
+  sent_at              DateTime @default(now()) @db.Timestamptz(6)
+  read_at              DateTime? @db.Timestamptz(6)
+  target_url           String?
+  priority             String?  @default("normal") @db.VarChar(50) // ENUM 'low', 'normal', 'high'
+  icon_url             String?
+  sender_type          String?  @db.VarChar(50)
+  sender_id            Int?
+  related_entity_type  String?  @db.VarChar(100)
+  related_entity_id    Int?
+  push_sent            Boolean? @default(false)
+  email_sent           Boolean? @default(false)
+  sms_sent             Boolean? @default(false)
+  metadata_json        Json?
+  internal_notes       String?
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user                 users    @relation("NotificationsReceived", fields: [user_id], references: [id], onDelete: Cascade)
+  sender               users?   @relation("NotificationSender", fields: [sender_id], references: [id])
+}
+
+model reviews {
+  id                        Int      @id @default(autoincrement())
+  user_id                   Int
+  entity_type               String   @db.VarChar(50) // ENUM 'course', 'question_bank', 'instructor'
+  entity_id                 Int
+  rating                    Int
+  review_text               String?
+  review_date               DateTime @default(now()) @db.Timestamptz(6)
+  is_approved               Boolean? @default(false)
+  approved_by               Int?
+  approval_date             DateTime? @db.Timestamptz(6)
+  helpful_votes             Int?     @default(0)
+  unhelpful_votes           Int?     @default(0)
+  reported_count            Int?     @default(0)
+  status                    String?  @default("pending") @db.VarChar(50) // ENUM 'pending', 'published', 'rejected'
+  moderation_notes          String?
+  response_from_entity_owner String?
+  response_date             DateTime? @db.Timestamptz(6)
+  external_review_id        String?  @db.VarChar(100)
+  metadata_json             Json?
+  internal_notes            String?
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user                      users    @relation("ReviewsSubmitted", fields: [user_id], references: [id], onDelete: Cascade)
+  approved_by_user          users?   @relation("ReviewApprovedBy", fields: [approved_by], references: [id])
+}
+
+model coupons {
+  id                        Int      @id @default(autoincrement())
+  coupon_code               String   @unique @db.VarChar(50)
+  description               String?
+  discount_type             String   @db.VarChar(50) // ENUM 'percentage', 'fixed_amount'
+  discount_value            Decimal  @db.Decimal(10, 2)
+  valid_from                DateTime @db.Timestamptz(6)
+  valid_until               DateTime @db.Timestamptz(6)
+  max_uses                  Int?
+  uses_count                Int?     @default(0)
+  min_order_amount          Decimal? @db.Decimal(10, 2)
+  applies_to_entity_type    String?  @db.VarChar(50)
+  applies_to_entity_ids     Json?
+  is_active                 Boolean? @default(true)
+  created_by_user_id        Int?
+  last_modified_by          Int?
+  usage_per_user_limit      Int?     @default(1)
+  can_be_combined           Boolean? @default(false)
+  campaign_name             String?  @db.VarChar(255)
+  internal_tag              String?  @db.VarChar(100)
+  external_promo_id         String?  @db.VarChar(100)
+  metadata_json             Json?
+  internal_notes            String?
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  created_by_user           users?   @relation("CouponCreatedBy", fields: [created_by_user_id], references: [id])
+  last_modified_by_user     users?   @relation("CouponLastModifiedBy", fields: [last_modified_by], references: [id])
+}
+
+model certificates {
+  id                    Int      @id @default(autoincrement())
+  user_id               Int
+  course_id             Int?
+  exam_id               Int?
+  certificate_url       String
+  issue_date            DateTime @default(now()) @db.Timestamptz(6)
+  expiry_date           DateTime? @db.Timestamptz(6)
+  certificate_code      String   @unique @db.VarChar(255)
+  grade_achieved        String?  @db.VarChar(50)
+  issued_by_org         String?  @db.VarChar(255)
+  template_used         String?  @db.VarChar(100)
+  validation_status     String?  @default("valid") @db.VarChar(50) // ENUM 'valid', 'revoked'
+  revocation_reason     String?
+  qr_code_url           String?
+  blockchain_hash       String?
+  digital_signature     String?
+  external_verification_link String?
+  last_emailed          DateTime? @db.Timestamptz(6)
+  metadata_json         Json?
+  internal_notes        String?
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  user                  users    @relation("UserCertificates", fields: [user_id], references: [id], onDelete: Cascade)
+  course                courses? @relation(fields: [course_id], references: [id], onDelete: SetNull)
+  exam                  exams?   @relation(fields: [exam_id], references: [id], onDelete: SetNull)
+}
+
+model assets {
+  id                  Int      @id @default(autoincrement())
+  asset_name          String   @db.VarChar(255)
+  file_path           String
+  file_type           String?  @db.VarChar(100)
+  file_size_bytes     BigInt?
+  uploaded_by_user_id Int?
+  upload_date         DateTime @default(now()) @db.Timestamptz(6)
+  description         String?
+  usage_count         Int?     @default(0)
+  is_public           Boolean? @default(false)
+  storage_provider    String?  @db.VarChar(100)
+  checksum            String?  @db.VarChar(255)
+  duration_seconds    Int?
+  resolution          String?  @db.VarChar(50)
+  thumbnail_path      String?
+  cdn_url             String?
+  tags                Json?
+  version_id          String?  @db.VarChar(50)
+  metadata_json       Json?
+  internal_notes      String?
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  uploaded_by_user    users?   @relation("AssetUploadedBy", fields: [uploaded_by_user_id], references: [id], onDelete: SetNull)
+}
