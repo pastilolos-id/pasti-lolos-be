@@ -64,6 +64,12 @@ export class CoursesController {
     updateSubject(@Param('id') id: string, @Body() body: any) {
     return this.coursesService.updateSubject(+id, body);
     }
+  
+    @Post('topics')
+    createTopic(@Body() body: any, @Req() req) {
+      // Mengirim data body dan ID user dari JWT
+      return this.coursesService.createTopic(body, req.user.userId);
+    }
 
   
 

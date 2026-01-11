@@ -12,16 +12,20 @@ export class ExamsController {
   createExam(@Body() body: any, @Req() req) {
     return this.examsService.createExam(body, req.user.userId);
   }
-  @Post('answers')
-  createAnswer(@Body() body: any) {
-    return this.examsService.createAnswer(body);
-  }
+@Post('answers')
+createAnswer(@Body() body: any, @Req() req) {
+  return this.examsService.createAnswer(body, req.user.userId);
+}
 
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.examsService.findOneExam(+id);
   }
 
+  // @Post('questions')
+  // createQuestion(@Body() body: any, @Req() req) {
+  //   return this.examsService.createQuestion(body, req.user.userId);
+  // }
   @Post('questions')
   createQuestion(@Body() body: any, @Req() req) {
     return this.examsService.createQuestion(body, req.user.userId);

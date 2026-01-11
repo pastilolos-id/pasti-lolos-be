@@ -56,14 +56,14 @@ export class CoursesService {
 
   async createSubject(data: any) {
     return this.prisma.subjects.create({ data }); 
-    }
+  }
 
-    async findAllSubjects() {
+  async findAllSubjects() {
     return this.prisma.subjects.findMany({
         where: { is_active: true },
         include: { _count: { select: { courses: true } } } // Lihat berapa banyak kursus di tiap subjek
     });
-    }
+  }
 
     async updateSubject(id: number, data: any) {
     return this.prisma.subjects.update({ where: { id }, data }); 
@@ -73,4 +73,18 @@ export class CoursesService {
     // Hati-hati: Di skema lo, delete subject akan CASCADE ke courses [cite: 49]
     return this.prisma.subjects.delete({ where: { id } });
     }
+
+    async createTopic(data: any, userId: number) {
+    return this.prisma.topics.create({
+      data: {
+        ...data,
+        // Pastikan field numerik/boolean sesuai dengan gambar
+        average_score: data.average_score ? parseFloat(data.average_score) : 0,
+        quiz_average_score: data.quiz_average_score ? parseFloat(data.quiz_average_score) : 0,
+        total_questions_count: data.total_questions_count ? parseInt(data.total_questions_count) : 0,
+        total_lessons_count: data.total_lessons_count ? parseInt(data.total_lessons_count) : 0,
+        last_updated_by: userId, // Sesuai kolom 'last_updated_by' di gambar
+      },
+    });
+  }
 }
