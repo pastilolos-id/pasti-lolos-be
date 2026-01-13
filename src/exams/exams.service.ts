@@ -230,7 +230,7 @@ async finishExam(userExamId: number) {
       submission_time: new Date(),
       score: totalScore,           // Menyimpan hasil kalkulasi Number()
       is_completed: true,
-      status: 'submitted'          // Mengubah status dari 'started' ke 'submitted'
+      status: 'submitted'          // Mengubah status dari 'In Progress' ke 'submitted'
     }
   });
 }
