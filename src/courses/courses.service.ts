@@ -87,4 +87,115 @@ export class CoursesService {
       },
     });
   }
+
+  async getOrStartCourse(userId: number, courseId: number) {
+    // 1. Validasi keberadaan Kursus
+    const course = await this.prisma.courses.findUnique({
+      where: { id: courseId },
+      select: { id: true, course_title: true }
+    });
+    if (!course) throw new NotFoundException('Kursus tidak ditemukan');
+
+    // 2. Registrasi / Update Akses Terakhir (User Courses)
+    // Sesuai constraint: user_courses_user_id_course_id_key
+    const enrollment = await this.prisma.user_courses.upsert({
+      where: {
+        user_id_course_id: { user_id: userId, course_id: courseId }
+      },
+      update: { 
+        last_accessed_at: new Date() 
+      },
+      create: {
+        user_id: userId,
+        course_id: courseId,
+        status: 'in_progress',
+        progress_percentage: 0,
+        enrollment_date: new Date(),
+        last_accessed_at: new Date()
+      }
+    });
+
+    // 3. Logic Resume: Cari materi terakhir yang diakses di progress_tracking
+    const lastAccessed = await this.prisma.progress_tracking.findFirst({
+      where: { user_id: userId, course_id: courseId },
+      orderBy: { last_accessed_timestamp: 'desc' },
+      select: { lesson_id: true }
+    });
+
+    // 4. Jika belum ada jejak belajar, ambil Lesson pertama dari urutan modul
+    if (!lastAccessed) {
+      const firstLesson = await this.prisma.lessons.findFirst({
+        where: { module: { course_id: courseId } },
+        orderBy: [
+          { module: { module_order: 'asc' } },
+          { order_in_module: 'asc' }
+        ],
+        select: { id: true }
+      });
+
+      return {
+        message: 'Mulai kursus baru',
+        enrollment,
+        resumeLessonId: firstLesson?.id || null
+      };
+    }
+
+    return {
+      message: 'Melanjutkan kursus',
+      enrollment,
+      resumeLessonId: lastAccessed.lesson_id
+    };
+  }
+
+  async updateProgress(userId: number, lessonId: number) {
+    // 1. Cari tahu lesson ini milik course mana
+    const lesson = await this.prisma.lessons.findUnique({
+      where: { id: lessonId },
+      include: { module: true }
+    });
+
+    if (!lesson) throw new NotFoundException('Lesson tidak ditemukan');
+    const courseId = lesson.module.course_id;
+
+    // 2. Update Lesson Progress (Detail)
+    await this.prisma.progress_tracking.upsert({
+      where: {
+        user_id_lesson_id: { user_id: userId, lesson_id: lessonId }
+      },
+      update: { is_completed: true, completion_timestamp: new Date() },
+      create: {
+        user_id: userId,
+        lesson_id: lessonId,
+        course_id: courseId,
+        module_id: lesson.module_id,
+        is_completed: true,
+        completion_timestamp: new Date()
+      }
+    });
+
+    // 3. Hitung Kalkulasi untuk Course Progress
+    const totalLessons = await this.prisma.lessons.count({
+      where: { module: { course_id: courseId } }
+    });
+
+    const completedLessons = await this.prisma.progress_tracking.count({
+      where: { user_id: userId, course_id: courseId, is_completed: true }
+    });
+
+    const percentage = (completedLessons / totalLessons) * 100;
+
+    // 4. Update Course Progress (Summary)
+    return await this.prisma.user_courses.update({
+      where: {
+        user_id_course_id: { user_id: userId, course_id: courseId }
+      },
+      data: {
+        progress_percentage: percentage,
+        status: percentage === 100 ? 'completed' : 'in_progress',
+        last_accessed_at: new Date(),
+        completion_date: percentage === 100 ? new Date() : null
+      }
+    });
+  }
+
 }

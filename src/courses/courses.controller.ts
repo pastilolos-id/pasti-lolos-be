@@ -71,6 +71,16 @@ export class CoursesController {
       return this.coursesService.createTopic(body, req.user.userId);
     }
 
-  
+    @Post('lesson-complete') //progress lesson
+    async completeLesson(@Body() body: { lesson_id: number }, @Req() req) {
+      // userId diambil dari JWT Guard
+      return await this.coursesService.updateProgress(req.user.id, body.lesson_id);
+    }
+
+    @Post('start-or-resume')
+    async handleStart(@Body('course_id') courseId: number, @Req() req) {
+      const userId = req.user.id; // Diambil dari payload JWT
+      return await this.coursesService.getOrStartCourse(userId, courseId);
+    }
 
 }
