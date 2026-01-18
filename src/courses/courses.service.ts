@@ -1,17 +1,20 @@
 // src/courses/courses.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
+
 
 @Injectable()
 export class CoursesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, 
+    private cloudinary: CloudinaryService) {}
 
   // --- CRUD COURSES ---
   async createCourse(data: any, userId: number) {
     return this.prisma.courses.create({
       data: {
         ...data,
-        created_by_user_id: userId, // Sesuai kolom di tabel 
+        createdByUserId: userId, 
       },
     });
   }
@@ -19,7 +22,7 @@ export class CoursesService {
   async findAllCourses() {
     return this.prisma.courses.findMany({
       include: {
-        modules: true, // Relasi ke tabel modules [cite: 12, 57]
+        modules: true, 
         _count: { select: { modules: true } },
       },
     });
@@ -31,7 +34,7 @@ export class CoursesService {
       include: {
         modules: {
           include: {
-            lessons: true, // Relasi modules ke lessons [cite: 11, 56]
+            lessons: true, 
           },
         },
       },
@@ -42,93 +45,140 @@ export class CoursesService {
 
   // --- CRUD MODULES (Bab) ---
   async createModule(data: any) {
-    return this.prisma.modules.create({ data }); // Nama tabel: modules 
+    return this.prisma.modules.create({ data }); 
   }
 
   // --- CRUD LESSONS (Materi di dalam Bab) ---
   async createLesson(data: any) {
-    return this.prisma.lessons.create({ data }); // Nama tabel: lessons 
+    return this.prisma.lessons.create({ data }); 
   }
 
   async findLesson(id: number) {
     return this.prisma.lessons.findUnique({ where: { id } });
   }
 
-  async createSubject(data: any) {
-    return this.prisma.subjects.create({ data }); 
+  async createSubject(data: any, file: Express.Multer.File) {
+    let iconUrl = data.icon_url;
+
+    // 1. Handle Upload Icon
+    if (file) {
+      const upload: any = await this.cloudinary.uploadFile(file, 'subject_icons');
+      iconUrl = upload.secure_url;
+    }
+
+    // 2. Helper untuk parse JSON aman dari form-data
+    const safeParse = (str: any) => {
+      try {
+        return typeof str === 'string' ? JSON.parse(str) : str;
+      } catch (e) {
+        return str;
+      }
+    };
+    console.log('--- Start Create Subject ---');
+    console.log('File Metadata:', file ? { name: file.originalname, size: file.size } : 'No File');
+
+    if (file) {
+      console.log('Sedang upload ke Cloudinary...');
+      // Jika macet di sini, berarti koneksi ke Cloudinary atau file terlalu besar
+      const upload = await this.cloudinary.uploadFile(file, 'subject_icons');
+      console.log('Upload Berhasil:', upload.secure_url);
+    }
+    // 3. Simpan ke Database (Manual Mapping)
+    return this.prisma.subjects.create({
+      data: {
+        subjectName: data.subject_name,
+        description: data.description,
+        iconUrl: iconUrl,
+        isActive: data.is_active === 'true' || data.is_active === true,
+        
+        // Parse Angka
+        totalQuestionsCount: parseInt(data.total_questions_count) || 0,
+        totalCoursesCount: parseInt(data.total_courses_count) || 0,
+        averageDifficulty: parseFloat(data.average_difficulty) || 0.0,
+        
+        // Kolom Teks Tambahan
+        relatedFieldOfStudy: data.related_field_of_study,
+        syllabusOutline: data.syllabus_outline,
+        suggestedGradeLevels: data.suggested_grade_levels,
+        commonMisconceptions: data.common_misconceptions,
+        keyConcepts: data.key_concepts,
+        learningObjectives: data.learning_objectives,
+        assessmentMethods: data.assessment_methods,
+        internalNotes: data.internal_notes,
+        
+        // Parse JSON & BigInt/Int Audit
+        lastReviewedBy: data.last_reviewed_by ? parseInt(data.last_reviewed_by) : null,
+        externalResourceLinks: safeParse(data.external_resource_links),
+        metadataJson: safeParse(data.metadata_json),
+      },
+    });
   }
 
   async findAllSubjects() {
     return this.prisma.subjects.findMany({
-        where: { is_active: true },
-        include: { _count: { select: { courses: true } } } // Lihat berapa banyak kursus di tiap subjek
+        where: { isActive: true }, // Ubah ke camelCase
+        include: { _count: { select: { courses: true } } } 
     });
   }
 
-    async updateSubject(id: number, data: any) {
+  async updateSubject(id: number, data: any) {
     return this.prisma.subjects.update({ where: { id }, data }); 
-    }
+  }
 
-    async deleteSubject(id: number) {
-    // Hati-hati: Di skema lo, delete subject akan CASCADE ke courses [cite: 49]
+  async deleteSubject(id: number) {
     return this.prisma.subjects.delete({ where: { id } });
-    }
+  }
 
-    async createTopic(data: any, userId: number) {
+  async createTopic(data: any, userId: number) {
     return this.prisma.topics.create({
       data: {
         ...data,
-        // Pastikan field numerik/boolean sesuai dengan gambar
-        average_score: data.average_score ? parseFloat(data.average_score) : 0,
-        quiz_average_score: data.quiz_average_score ? parseFloat(data.quiz_average_score) : 0,
-        total_questions_count: data.total_questions_count ? parseInt(data.total_questions_count) : 0,
-        total_lessons_count: data.total_lessons_count ? parseInt(data.total_lessons_count) : 0,
-        last_updated_by: userId, // Sesuai kolom 'last_updated_by' di gambar
+        averageScore: data.averageScore ? parseFloat(data.averageScore) : 0,
+        quizAverageScore: data.quizAverageScore ? parseFloat(data.quizAverageScore) : 0,
+        totalQuestionsCount: data.totalQuestionsCount ? parseInt(data.totalQuestionsCount) : 0,
+        totalLessonsCount: data.totalLessonsCount ? parseInt(data.totalLessonsCount) : 0,
+        lastUpdatedBy: userId, 
       },
     });
   }
 
   async getOrStartCourse(userId: number, courseId: number) {
-    // 1. Validasi keberadaan Kursus
     const course = await this.prisma.courses.findUnique({
       where: { id: courseId },
-      select: { id: true, course_title: true }
+      select: { id: true, courseTitle: true } // Ubah ke camelCase
     });
     if (!course) throw new NotFoundException('Kursus tidak ditemukan');
 
-    // 2. Registrasi / Update Akses Terakhir (User Courses)
-    // Sesuai constraint: user_courses_user_id_course_id_key
-    const enrollment = await this.prisma.user_courses.upsert({
+    // Menggunakan userCourses (Prisma biasanya otomatis camelCase untuk nama model)
+    const enrollment = await this.prisma.userCourses.upsert({
       where: {
-        user_id_course_id: { user_id: userId, course_id: courseId }
+        userId_courseId: { userId: userId, courseId: courseId } // Index unique camelCase
       },
       update: { 
-        last_accessed_at: new Date() 
+        lastAccessedAt: new Date() 
       },
       create: {
-        user_id: userId,
-        course_id: courseId,
+        userId: userId,
+        courseId: courseId,
         status: 'in_progress',
-        progress_percentage: 0,
-        enrollment_date: new Date(),
-        last_accessed_at: new Date()
+        progressPercentage: 0,
+        enrollmentDate: new Date(),
+        lastAccessedAt: new Date()
       }
     });
 
-    // 3. Logic Resume: Cari materi terakhir yang diakses di progress_tracking
-    const lastAccessed = await this.prisma.progress_tracking.findFirst({
-      where: { user_id: userId, course_id: courseId },
-      orderBy: { last_accessed_timestamp: 'desc' },
-      select: { lesson_id: true }
+    const lastAccessed = await this.prisma.progressTracking.findFirst({
+      where: { userId: userId, courseId: courseId },
+      orderBy: { lastAccessedTimestamp: 'desc' },
+      select: { lessonId: true }
     });
 
-    // 4. Jika belum ada jejak belajar, ambil Lesson pertama dari urutan modul
     if (!lastAccessed) {
       const firstLesson = await this.prisma.lessons.findFirst({
-        where: { module: { course_id: courseId } },
+        where: { module: { courseId: courseId } },
         orderBy: [
-          { module: { module_order: 'asc' } },
-          { order_in_module: 'asc' }
+          { module: { moduleOrder: 'asc' } },
+          { orderInModule: 'asc' }
         ],
         select: { id: true }
       });
@@ -143,59 +193,54 @@ export class CoursesService {
     return {
       message: 'Melanjutkan kursus',
       enrollment,
-      resumeLessonId: lastAccessed.lesson_id
+      resumeLessonId: lastAccessed.lessonId
     };
   }
 
   async updateProgress(userId: number, lessonId: number) {
-    // 1. Cari tahu lesson ini milik course mana
     const lesson = await this.prisma.lessons.findUnique({
       where: { id: lessonId },
       include: { module: true }
     });
 
     if (!lesson) throw new NotFoundException('Lesson tidak ditemukan');
-    const courseId = lesson.module.course_id;
+    const courseId = lesson.module.courseId;
 
-    // 2. Update Lesson Progress (Detail)
-    await this.prisma.progress_tracking.upsert({
+    await this.prisma.progressTracking.upsert({
       where: {
-        user_id_lesson_id: { user_id: userId, lesson_id: lessonId }
+        userId_lessonId: { userId: userId, lessonId: lessonId }
       },
-      update: { is_completed: true, completion_timestamp: new Date() },
+      update: { isCompleted: true, completionTimestamp: new Date() },
       create: {
-        user_id: userId,
-        lesson_id: lessonId,
-        course_id: courseId,
-        module_id: lesson.module_id,
-        is_completed: true,
-        completion_timestamp: new Date()
+        userId: userId,
+        lessonId: lessonId,
+        courseId: courseId,
+        moduleId: lesson.moduleId,
+        isCompleted: true,
+        completionTimestamp: new Date()
       }
     });
 
-    // 3. Hitung Kalkulasi untuk Course Progress
     const totalLessons = await this.prisma.lessons.count({
-      where: { module: { course_id: courseId } }
+      where: { module: { courseId: courseId } }
     });
 
-    const completedLessons = await this.prisma.progress_tracking.count({
-      where: { user_id: userId, course_id: courseId, is_completed: true }
+    const completedLessons = await this.prisma.progressTracking.count({
+      where: { userId: userId, courseId: courseId, isCompleted: true }
     });
 
     const percentage = (completedLessons / totalLessons) * 100;
 
-    // 4. Update Course Progress (Summary)
-    return await this.prisma.user_courses.update({
+    return await this.prisma.userCourses.update({
       where: {
-        user_id_course_id: { user_id: userId, course_id: courseId }
+        userId_courseId: { userId: userId, courseId: courseId }
       },
       data: {
-        progress_percentage: percentage,
+        progressPercentage: percentage,
         status: percentage === 100 ? 'completed' : 'in_progress',
-        last_accessed_at: new Date(),
-        completion_date: percentage === 100 ? new Date() : null
+        lastAccessedAt: new Date(),
+        completionDate: percentage === 100 ? new Date() : null
       }
     });
   }
-
 }

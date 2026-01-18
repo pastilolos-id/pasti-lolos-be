@@ -13,771 +13,814 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model users {
-  id                                       Int                 @id @default(autoincrement())
-  google_id                                String?             @unique
-  username                                 String              @unique @db.VarChar(100)
-  email                                    String              @unique @db.VarChar(255)
-  password_hash                            String              @db.VarChar(255)
-  first_name                               String?             @db.VarChar(100)
-  last_name                                String?             @db.VarChar(100)
-  phone_number                             String?             @db.VarChar(20)
-  address                                  String?
-  city                                     String?             @db.VarChar(100)
-  province                                 String?             @db.VarChar(100)
-  country                                  String?             @db.VarChar(100)
-  postal_code                              String?             @db.VarChar(10)
-  date_of_birth                            DateTime?           @db.Date
-  gender                                   String?             @db.VarChar(10) // ENUM 'M', 'F', 'Other'
-  profile_picture_url                      String?
-  user_role_id                             Int
-  status                                   String?             @default("active") @db.VarChar(50) // ENUM 'active', 'inactive', 'suspended'
-  last_login_at                            DateTime?           @db.Timestamptz(6)
-  metadata_json                            Json?
-  internal_notes                           String?
-  created_at                               DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at                               DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
-  user_roles                               user_roles          @relation(fields: [user_role_id], references: [id], onDelete: Restrict)
-  user_roles_last_modified_by_usersTousers user_roles[]        @relation("user_roles_last_modified_byTousers")
-  subjects                                 subjects[]          @relation("SubjectLastReviewedBy")
-  topics                                   topics[]            @relation("TopicLastUpdatedBy")
-  question_banks_created_by                question_banks[]    @relation("QuestionBankCreatedBy")
-  question_banks_reviewed_by               question_banks[]    @relation("QuestionBankReviewedBy")
-  questions_created_by                     questions[]         @relation("QuestionCreatedBy")
-  questions_reviewed_by                    questions[]         @relation("QuestionReviewedBy")
-  answers                                  answers[]           @relation("AnswerLastModifiedBy")
-  question_bank_items_added_by             question_bank_items[] @relation("QuestionBankItemAddedBy")
-  orders                                   orders[]
-  payments                                 payments[]
-  courses_instructor                       courses[]           @relation("CourseInstructor")
-  courses_created_by                       courses[]           @relation("CourseCreatedBy")
-  modules                                  modules[]           @relation("ModuleLastModifiedBy")
-  lessons                                  lessons[]           @relation("LessonLastUpdatedBy")
-  user_courses                             user_courses[]
-  progress_tracking                        progress_tracking[]
-  exams_created_by                         exams[]             @relation("ExamCreatedBy")
-  exam_questions                           exam_questions[]    @relation("ExamQuestionAddedBy")
-  user_exams                               user_exams[]
-  user_exam_answers_grader                 user_exam_answers[] @relation("UserExamAnswerGrader")
-  user_exam_answers_last_modified          user_exam_answers[] @relation("UserExamAnswerLastModifiedBy")
-  notifications_received                   notifications[]     @relation("NotificationsReceived")
-  notifications_sent                       notifications[]     @relation("NotificationSender")
-  reviews_submitted                        reviews[]           @relation("ReviewsSubmitted")
-  reviews_approved                         reviews[]           @relation("ReviewApprovedBy")
-  coupons_created_by                       coupons[]           @relation("CouponCreatedBy")
-  coupons_last_modified_by                 coupons[]           @relation("CouponLastModifiedBy")
-  certificates                             certificates[]      @relation("UserCertificates")
-  assets                                   assets[]            @relation("AssetUploadedBy")
+model Users {
+  id                                  Int                 @id @default(autoincrement())
+  googleId                            String?             @unique @map("google_id")
+  username                            String              @unique @db.VarChar(100)
+  email                               String              @unique @db.VarChar(255)
+  passwordHash                        String              @map("password_hash") @db.VarChar(255)
+  firstName                           String?             @map("first_name") @db.VarChar(100)
+  lastName                            String?             @map("last_name") @db.VarChar(100)
+  phoneNumber                         String?             @map("phone_number") @db.VarChar(20)
+  address                             String?
+  city                                String?             @db.VarChar(100)
+  province                            String?             @db.VarChar(100)
+  country                             String?             @db.VarChar(100)
+  postalCode                          String?             @map("postal_code") @db.VarChar(10)
+  dateOfBirth                         DateTime?           @map("date_of_birth") @db.Date
+  gender                              String?             @db.VarChar(10) // ENUM 'M', 'F', 'Other'
+  profilePictureUrl                   String?             @map("profile_picture_url")
+  userRoleId                          Int                 @map("user_role_id")
+  status                              String?             @default("active") @db.VarChar(50) // ENUM 'active', 'inactive', 'suspended'
+  lastLoginAt                         DateTime?           @map("last_login_at") @db.Timestamptz(6)
+  metadataJson                        Json?               @map("metadata_json")
+  internalNotes                       String?             @map("internal_notes")
+  createdAt                           DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                           DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  userRoles                           UserRoles           @relation(fields: [userRoleId], references: [id], onDelete: Restrict)
+  userRolesLastModifiedByUsersTousers UserRoles[]         @relation("user_roles_last_modified_byTousers")
+  subjects                            Subjects[]          @relation("SubjectLastReviewedBy")
+  topics                              Topics[]            @relation("TopicLastUpdatedBy")
+  questionBanksCreatedBy              QuestionBanks[]     @relation("QuestionBankCreatedBy")
+  questionBanksReviewedBy             QuestionBanks[]     @relation("QuestionBankReviewedBy")
+  questionsCreatedBy                  Questions[]         @relation("QuestionCreatedBy")
+  questionsReviewedBy                 Questions[]         @relation("QuestionReviewedBy")
+  answers                             Answers[]           @relation("AnswerLastModifiedBy")
+  questionBankItemsAddedBy            QuestionBankItems[] @relation("QuestionBankItemAddedBy")
+  orders                              Orders[]
+  payments                            Payments[]
+  coursesInstructor                   Courses[]           @relation("CourseInstructor")
+  coursesCreatedBy                    Courses[]           @relation("CourseCreatedBy")
+  modules                             Modules[]           @relation("ModuleLastModifiedBy")
+  lessons                             Lessons[]           @relation("LessonLastUpdatedBy")
+  userCourses                         UserCourses[]
+  progressTracking                    ProgressTracking[]
+  examsCreatedBy                      Exams[]             @relation("ExamCreatedBy")
+  examQuestions                       ExamQuestions[]     @relation("ExamQuestionAddedBy")
+  userExams                           UserExams[]
+  userExamAnswersGrader               UserExamAnswers[]   @relation("UserExamAnswerGrader")
+  userExamAnswersLastModified         UserExamAnswers[]   @relation("UserExamAnswerLastModifiedBy")
+  notificationsReceived               Notifications[]     @relation("NotificationsReceived")
+  notificationsSent                   Notifications[]     @relation("NotificationSender")
+  reviewsSubmitted                    Reviews[]           @relation("ReviewsSubmitted")
+  reviewsApproved                     Reviews[]           @relation("ReviewApprovedBy")
+  couponsCreatedBy                    Coupons[]           @relation("CouponCreatedBy")
+  couponsLastModifiedBy               Coupons[]           @relation("CouponLastModifiedBy")
+  certificates                        Certificates[]      @relation("UserCertificates")
+  assets                              Assets[]            @relation("AssetUploadedBy")
+
+  @@map("users")
 }
 
-model user_roles {
-  id                        Int      @id @default(autoincrement())
-  role_name                 String   @unique @db.VarChar(100)
-  description               String?
-  permissions_json          Json?
-  can_manage_users          Boolean? @default(false)
-  can_create_content        Boolean? @default(false)
-  can_view_reports          Boolean? @default(false)
-  can_access_admin_panel    Boolean? @default(false)
-  hierarchy_level           Int?     @default(1)
-  is_system_role            Boolean? @default(false)
-  default_dashboard_url     String?
-  api_access_level          String?  @db.VarChar(50)
-  related_module_access     Json?
-  audit_log_json            Json?
-  internal_comments         String?
-  external_reference_id     String?  @db.VarChar(100)
-  version_control           String?  @db.VarChar(50)
-  last_modified_by          Int?
-  is_active                 Boolean? @default(true)
-  created_at                DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  users                     users[]
-  last_modified_by_user     users?   @relation("user_roles_last_modified_byTousers", fields: [last_modified_by], references: [id])
-}
-
-model subjects {
-  id                        Int      @id @default(autoincrement())
-  subject_name              String   @unique @db.VarChar(255)
-  description               String?
-  icon_url                  String?
-  is_active                 Boolean? @default(true)
-  total_questions_count     Int?     @default(0)
-  total_courses_count       Int?     @default(0)
-  average_difficulty        Decimal? @db.Decimal(3, 2)
-  related_field_of_study    String?  @db.VarChar(255)
-  syllabus_outline          String?
-  external_resource_links   Json?
-  suggested_grade_levels    String?  @db.VarChar(100)
-  common_misconceptions     String?
-  key_concepts              String?
-  learning_objectives       String?
-  assessment_methods        String?
-  last_reviewed_by          Int?
-  metadata_json             Json?
-  internal_notes            String?
-  created_at                DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  topics                    topics[]
-  question_banks            question_banks[]
-  questions                 questions[]
-  courses                   courses[]
-  exams                     exams[]
-  last_reviewed_by_user     users?   @relation("SubjectLastReviewedBy", fields: [last_reviewed_by], references: [id])
-}
-
-model topics {
-  id                          Int      @id @default(autoincrement())
-  topic_name                  String   @db.VarChar(255)
-  subject_id                  Int
-  description                 String?
-  total_questions_count       Int?     @default(0)
-  total_lessons_count         Int?     @default(0)
-  average_score               Decimal? @db.Decimal(5, 2)
-  prerequisite_topics         Json?
-  related_keywords            String?
-  learning_materials_suggested String?
-  common_errors               String?
-  historical_context          String?
-  real_world_applications     String?
-  learning_tips               String?
-  quiz_average_score          Decimal? @db.Decimal(5, 2)
-  revision_frequency          Int?     @default(0)
-  is_advanced                 Boolean? @default(false)
-  external_reference_id       String?  @db.VarChar(100)
-  last_updated_by             Int?
-  metadata_json               Json?
-  internal_notes              String?
-  created_at                  DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  subject                     subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  last_updated_by_user        users?   @relation("TopicLastUpdatedBy", fields: [last_updated_by], references: [id])
-  question_banks              question_banks[]
-  questions                   questions[]
-}
-
-model question_banks {
-  id                          Int      @id @default(autoincrement())
-  bank_name                   String   @db.VarChar(255)
-  description                 String?
-  subject_id                  Int
-  topic_id                    Int?
-  price                       Decimal? @default(0.00) @db.Decimal(10, 2)
-  status                      String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
-  total_questions             Int?     @default(0)
-  access_duration_days        Int?
-  last_reviewed_at            DateTime? @db.Timestamptz(6)
-  reviewed_by_user_id         Int?
-  version_number              String?  @db.VarChar(50)
-  language                    String?  @default("id") @db.VarChar(50)
-  target_audience             String?
-  usage_guidelines            String?
-  licensing_details           String?
-  is_premium                  Boolean? @default(false)
-  tags                        Json?
-  average_completion_time_minutes Int?
-  external_id                 String?  @db.VarChar(100)
-  metadata_json               Json?
-  internal_notes              String?
-  created_by_user_id          Int
-  created_at                  DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  subject                     subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  topic                       topics?  @relation(fields: [topic_id], references: [id], onDelete: SetNull)
-  created_by_user             users    @relation("QuestionBankCreatedBy", fields: [created_by_user_id], references: [id])
-  reviewed_by_user            users?   @relation("QuestionBankReviewedBy", fields: [reviewed_by_user_id], references: [id])
-  questions                   questions[] @relation("questions_question_bank_id_fkey")
-  question_bank_items         question_bank_items[]
-}
-
-model questions {
-  id                      Int      @id @default(autoincrement())
-  question_bank_id        Int?
-  subject_id              Int
-  topic_id                Int?
-  question_text           String
-  question_type           String   @db.VarChar(50) // ENUM 'multiple_choice', 'essay', 'true_false', 'fill_in_the_blank'
-  difficulty_level        String?  @default("medium") @db.VarChar(50) // ENUM 'easy', 'medium', 'hard'
-  image_url               String?
-  audio_url               String?
-  video_url               String?
-  explanation_text        String?
-  correct_answer_id       Int?
-  points                  Int?     @default(1)
-  time_limit_per_question Int?
-  tags                    Json?
-  is_active               Boolean? @default(true)
-  created_by_user_id      Int
-  reviewed_by_user_id     Int?
-  last_review_date        DateTime? @db.Timestamptz(6)
-  source_reference        String?
-  common_mistakes         String?
-  metadata_json           Json?
-  internal_notes          String?
-  created_at              DateTime @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  question_bank           question_banks? @relation("questions_question_bank_id_fkey", fields: [question_bank_id], references: [id], onDelete: SetNull)
-  subject                 subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  topic                   topics?  @relation(fields: [topic_id], references: [id], onDelete: SetNull)
-  answers                 answers[]
-  question_bank_items     question_bank_items[]
-  exam_questions          exam_questions[]
-  user_exam_answers       user_exam_answers[]
-  created_by_user         users    @relation("QuestionCreatedBy", fields: [created_by_user_id], references: [id])
-  reviewed_by_user        users?   @relation("QuestionReviewedBy", fields: [reviewed_by_user_id], references: [id])
-}
-
-model answers {
-  id                          Int      @id @default(autoincrement())
-  question_id                 Int
-  answer_text                 String
-  is_correct                  Boolean? @default(false)
-  feedback_text               String?
-  image_url                   String?
-  order_number                Int?
-  points_if_selected          Int?     @default(0)
-  justification_for_correct   String?
-  alternative_answer_forms    String?
-  source_reference            String?
-  version_id                  String?  @db.VarChar(50)
-  external_id                 String?  @db.VarChar(100)
-  last_modified_by            Int?
-  is_active                   Boolean? @default(true)
-  metadata_json               Json?
-  internal_notes              String?
-  created_at                  DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  question                    questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
-  last_modified_by_user       users?   @relation("AnswerLastModifiedBy", fields: [last_modified_by], references: [id])
-  user_exam_answers           user_exam_answers[]
-}
-
-model question_bank_items {
-  id                           Int      @id @default(autoincrement())
-  question_bank_id             Int
-  question_id                  Int
-  order_in_bank                Int?
-  difficulty_override          String?  @db.VarChar(50)
-  is_required                  Boolean? @default(false)
-  points_override              Int?
-  time_limit_override_seconds  Int?
-  notes_for_this_item          String?
-  category_in_bank             String?  @db.VarChar(100)
-  added_by_user_id             Int?
-  status_in_bank               String?  @db.VarChar(50)
-  last_modified_date           DateTime? @db.Timestamptz(6)
-  version_control              String?  @db.VarChar(50)
-  external_reference_id        String?  @db.VarChar(100)
-  metadata_json                Json?
-  internal_comments            String?
-  related_tags                 Json?
-  created_at                   DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  question_bank                question_banks @relation(fields: [question_bank_id], references: [id], onDelete: Cascade)
-  question                     questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
-  added_by_user                users?   @relation("QuestionBankItemAddedBy", fields: [added_by_user_id], references: [id])
-
-  @@unique([question_bank_id, question_id])
-}
-
-model orders {
-  id                 Int      @id @default(autoincrement())
-  user_id            Int
-  order_date         DateTime @default(now()) @db.Timestamptz(6)
-  total_amount       Decimal  @db.Decimal(10, 2)
-  payment_status     String?  @default("pending") @db.VarChar(50) // ENUM 'pending', 'paid', 'failed', 'refunded'
-  shipping_address   String?
-  coupon_code        String?  @db.VarChar(50)
-  discount_amount    Decimal? @default(0.00) @db.Decimal(10, 2)
-  tax_amount         Decimal? @default(0.00) @db.Decimal(10, 2)
-  grand_total        Decimal  @db.Decimal(10, 2)
-  payment_method     String?  @db.VarChar(100)
-  transaction_id     String?  @unique @db.VarChar(255)
-  order_status       String?  @default("created") @db.VarChar(50) // ENUM 'created', 'processing', 'completed', 'cancelled'
-  notes              String?
-  billing_address    String?
-  ip_address         String?
-  device_info        String?
-  currency           String?  @default("IDR") @db.VarChar(10)
-  delivery_status    String?  @default("N/A") @db.VarChar(50)
-  tracking_number    String?  @db.VarChar(100)
-  internal_remarks   String?
-  metadata_json      Json?
-  created_at         DateTime @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  user               users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  order_items        order_items[]
-  payments           payments[]
-}
-
-model order_items {
-  id                   Int      @id @default(autoincrement())
-  order_id             Int
-  item_type            String   @db.VarChar(50) // ENUM 'question_bank', 'course', 'exam_access'
-  item_id              Int
-  quantity             Int?     @default(1)
-  price_per_item       Decimal  @db.Decimal(10, 2)
-  total_price          Decimal  @db.Decimal(10, 2)
-  item_name            String   @db.VarChar(255)
-  notes                String?
-  access_granted       Boolean? @default(false)
-  access_start_date    DateTime? @db.Timestamptz(6)
-  access_end_date      DateTime? @db.Timestamptz(6)
-  license_key          String?  @db.VarChar(255)
-  download_link        String?
-  refund_status        String?  @default("none") @db.VarChar(50)
-  refund_amount        Decimal? @default(0.00) @db.Decimal(10, 2)
-  metadata_json        Json?
-  internal_comments    String?
-  created_at           DateTime @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  order                orders   @relation(fields: [order_id], references: [id], onDelete: Cascade)
-}
-
-model payments {
-  id                    Int      @id @default(autoincrement())
-  order_id              Int
-  user_id               Int
-  amount                Decimal  @db.Decimal(10, 2)
-  payment_method        String   @db.VarChar(100)
-  transaction_id        String   @unique @db.VarChar(255)
-  payment_status        String?  @default("pending") @db.VarChar(50) // ENUM 'pending', 'success', 'failed', 'refunded'
-  payment_date          DateTime @default(now()) @db.Timestamptz(6)
-  currency              String?  @default("IDR") @db.VarChar(10)
-  gateway_response      String?
-  fees                  Decimal? @default(0.00) @db.Decimal(10, 2)
-  refund_status         String?  @default("none") @db.VarChar(50) // ENUM 'none', 'partial', 'full'
-  refund_date           DateTime? @db.Timestamptz(6)
-  receipt_url           String?
-  notes                 String?
-  captured_at           DateTime? @db.Timestamptz(6)
-  authorization_code    String?  @db.VarChar(100)
-  payment_gateway_name  String?  @db.VarChar(100)
-  error_code            String?  @db.VarChar(50)
-  error_message         String?
-  internal_reference    String?
-  metadata_json         Json?
-  created_at            DateTime @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  order                 orders   @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  user                  users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  user_courses          user_courses[]
-}
-
-model courses {
-  id                   Int      @id @default(autoincrement())
-  course_title         String   @db.VarChar(255)
-  description          String?
-  subject_id           Int
-  difficulty_level     String?  @default("beginner") @db.VarChar(50) // ENUM 'beginner', 'intermediate', 'advanced'
-  price                Decimal? @default(0.00) @db.Decimal(10, 2)
-  duration_hours       Int?
-  instructor_id        Int?
-  status               String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
-  thumbnail_url        String?
-  introduction_video_url String?
-  prerequisites        String?
-  learning_outcomes    String?
-  enrollment_count     Int?     @default(0)
-  rating               Decimal? @default(0.00) @db.Decimal(3, 2)
-  review_count         Int?     @default(0)
-  last_updated         DateTime @default(now()) @db.Timestamptz(6)
-  syllabus_pdf_url     String?
-  certification_available Boolean? @default(false)
-  external_course_id   String?  @db.VarChar(100)
-  metadata_json        Json?
-  internal_notes       String?
-  created_by_user_id   Int
-  created_at           DateTime @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  subject              subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  instructor           users?   @relation("CourseInstructor", fields: [instructor_id], references: [id], onDelete: SetNull)
-  created_by_user      users    @relation("CourseCreatedBy", fields: [created_by_user_id], references: [id])
-  modules              modules[]
-  user_courses         user_courses[]
-  progress_tracking    progress_tracking[]
-  certificates         certificates[]
-}
-
-model modules {
-  id                                Int      @id @default(autoincrement())
-  course_id                         Int
-  module_title                      String   @db.VarChar(255)
-  description                       String?
-  module_order                      Int
-  duration_minutes                  Int?
-  is_free_preview                   Boolean? @default(false)
-  status                            String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
-  total_lessons                     Int?     @default(0)
-  quiz_id                           Int?
-  learning_objectives               String?
-  resources_links                   Json?
-  estimated_completion_time_minutes Int?
-  module_dependency                 Json?
-  version_number                    String?  @db.VarChar(50)
-  external_reference_id             String?  @db.VarChar(100)
-  last_modified_by                  Int?
-  metadata_json                     Json?
-  internal_notes                    String?
-  created_at                        DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                        DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  course                            courses  @relation(fields: [course_id], references: [id], onDelete: Cascade)
-  last_modified_by_user             users?   @relation("ModuleLastModifiedBy", fields: [last_modified_by], references: [id])
-  lessons                           lessons[]
-  progress_tracking                 progress_tracking[]
-}
-
-model lessons {
-  id                                Int      @id @default(autoincrement())
-  module_id                         Int
-  lesson_title                      String   @db.VarChar(255)
-  lesson_type                       String   @db.VarChar(50) // ENUM 'video', 'text', 'quiz', 'assignment', 'file'
-  content_url                       String?
-  content_text                      String?
-  duration_minutes                  Int?
-  is_completed                      Boolean? @default(false)
-  is_preview                      Boolean? @default(false)
-  order_in_module                   Int
-  quiz_id                           Int?
-  discussion_forum_link             String?
-  attachments_json                  Json?
-  notes_for_lesson                  String?
-  resource_links_json               Json?
-  status                            String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
-  estimated_reading_time_minutes    Int?
-  transcription_text                String?
-  tags                              Json?
-  version_id                        String?  @db.VarChar(50)
-  external_asset_id                 String?  @db.VarChar(100)
-  last_updated_by                   Int?
-  metadata_json                     Json?
-  internal_comments                 String?
-  created_at                        DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                        DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  module                            modules  @relation(fields: [module_id], references: [id], onDelete: Cascade)
-  last_updated_by_user              users?   @relation("LessonLastUpdatedBy", fields: [last_updated_by], references: [id])
-  progress_tracking                 progress_tracking[]
-}
-
-model user_courses {
-  id                      Int      @id @default(autoincrement())
-  user_id                 Int
-  course_id               Int
-  enrollment_date         DateTime @default(now()) @db.Timestamptz(6)
-  completion_date         DateTime? @db.Timestamptz(6)
-  progress_percentage     Decimal? @default(0.00) @db.Decimal(5, 2)
-  status                  String?  @default("in_progress") @db.VarChar(50) // ENUM 'in_progress', 'completed', 'dropped', 'paused'
-  last_accessed_at        DateTime @default(now()) @db.Timestamptz(6)
-  certificate_url         String?
-  score                   Decimal? @db.Decimal(5, 2)
-  review_given            Boolean? @default(false)
-  rating_given            Int?
-  payment_id              Int?
-  access_source           String?  @db.VarChar(100)
-  enrollment_method       String?  @db.VarChar(100)
-  time_spent_total_minutes Int?
-  feedback_notes          String?
-  internal_tracking_id    String?  @db.VarChar(100)
-  metadata_json           Json?
-  created_at              DateTime @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  user                    users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  course                  courses  @relation(fields: [course_id], references: [id], onDelete: Cascade)
-  payment                 payments? @relation(fields: [payment_id], references: [id])
-
-  @@unique([user_id, course_id])
-}
-
-model progress_tracking {
-  id                          Int      @id @default(autoincrement())
-  user_id                     Int
-  lesson_id                   Int
-  course_id                   Int
-  module_id                   Int
-  is_completed                Boolean? @default(false)
-  completion_timestamp        DateTime? @db.Timestamptz(6)
-  time_spent_seconds          Int?     @default(0)
-  last_accessed_timestamp     DateTime @default(now()) @db.Timestamptz(6)
-  notes                       String?
-  score                       Decimal? @db.Decimal(5, 2)
-  attempts_count              Int?     @default(0)
-  watched_percentage          Decimal? @db.Decimal(5, 2)
-  read_progress_percentage    Decimal? @db.Decimal(5, 2)
-  last_interaction_type       String?  @db.VarChar(50)
-  device_used                 String?  @db.VarChar(100)
-  ip_address                  String?
-  browser_info                String?
-  session_id                  String?  @db.VarChar(255)
-  internal_debug_info         String?
-  metadata_json               Json?
-  created_at                  DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  user                        users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  lesson                      lessons  @relation(fields: [lesson_id], references: [id], onDelete: Cascade)
-  course                      courses  @relation(fields: [course_id], references: [id], onDelete: Cascade)
-  module                      modules  @relation(fields: [module_id], references: [id], onDelete: Cascade)
-
-  @@unique([user_id, lesson_id])
-}
-
-model exams {
-  id                      Int      @id @default(autoincrement())
-  exam_name               String   @db.VarChar(255)
-  description             String?
-  subject_id              Int
-  duration_minutes        Int
-  start_time              DateTime? @db.Timestamptz(6)
-  end_time                DateTime? @db.Timestamptz(6)
-  total_questions         Int?     @default(0)
-  passing_score           Decimal? @db.Decimal(5, 2)
-  attempts_allowed        Int?     @default(1)
-  exam_type               String   @db.VarChar(50) // ENUM 'tryout', 'quiz', 'final_exam', 'practice'
-  status                  String?  @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'closed', 'archived'
-  price                   Decimal? @default(0.00) @db.Decimal(10, 2)
-  available_until         DateTime? @db.Timestamptz(6)
-  created_by_user_id      Int
-  randomize_questions     Boolean? @default(true)
-  randomize_answers       Boolean? @default(true)
-  show_results_immediately Boolean? @default(false)
-  feedback_level          String?  @db.VarChar(50)
-  certification_on_pass   Boolean? @default(false)
-  external_exam_id        String?  @db.VarChar(100)
-  metadata_json           Json?
-  internal_notes          String?
-  created_at              DateTime @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  subject                 subjects @relation(fields: [subject_id], references: [id], onDelete: Cascade)
-  created_by_user         users    @relation("ExamCreatedBy", fields: [created_by_user_id], references: [id], onDelete: Restrict)
-  exam_questions          exam_questions[]
-  user_exams              user_exams[]
-  certificates            certificates[]
-}
-
-model exam_questions {
-  id                           Int      @id @default(autoincrement())
-  exam_id                      Int
-  question_id                  Int
-  order_in_exam                Int?
-  points_for_question          Decimal? @default(1.0) @db.Decimal(5, 2)
-  section_name                 String?  @db.VarChar(100)
-  is_bonus_question            Boolean? @default(false)
-  time_limit_override_seconds  Int?
-  difficulty_override          String?  @db.VarChar(50)
-  notes_for_examiner           String?
-  internal_category            String?  @db.VarChar(100)
-  version_id                   String?  @db.VarChar(50)
-  added_by_user_id             Int?
-  last_modified_date           DateTime? @db.Timestamptz(6)
-  external_reference_id        String?  @db.VarChar(100)
-  metadata_json                Json?
-  internal_comments            String?
-  created_at                   DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  exam                         exams    @relation(fields: [exam_id], references: [id], onDelete: Cascade)
-  question                     questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
-  added_by_user                users?   @relation("ExamQuestionAddedBy", fields: [added_by_user_id], references: [id])
-
-  @@unique([exam_id, question_id])
-}
-
-model user_exams {
-  id                   Int      @id @default(autoincrement())
-  user_id              Int
-  exam_id              Int
-  start_time           DateTime @default(now()) @db.Timestamptz(6)
-  end_time             DateTime? @db.Timestamptz(6)
-  score                Decimal? @db.Decimal(5, 2)
-  is_completed         Boolean? @default(false)
-  submission_time      DateTime? @db.Timestamptz(6)
-  attempts_count       Int?     @default(1)
-  status               String?  @default("started") @db.VarChar(50) // ENUM 'started', 'submitted', 'graded', 'abandoned'
-  notes                String?
-  ip_address           String?
-  device_info          String?
-  time_taken_seconds   Int?
-  passing_status       Boolean?
-  certificate_issued   Boolean? @default(false)
-  proctoring_status    String?  @db.VarChar(50)
-  final_grade          String?  @db.VarChar(10)
-  exam_version_taken   String?  @db.VarChar(50)
-  external_session_id  String?  @db.VarChar(100)
-  metadata_json        Json?
-  internal_remarks     String?
-  created_at           DateTime @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  user                 users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  exam                 exams    @relation(fields: [exam_id], references: [id], onDelete: Cascade)
-  user_exam_answers    user_exam_answers[]
-
-  @@unique([user_id, exam_id, attempts_count])
-}
-
-model user_exam_answers {
-  id                      Int      @id @default(autoincrement())
-  user_exam_id            Int
-  question_id             Int
-  user_answer             String?
-  selected_answer_id      Int?
-  is_correct              Boolean?
-  points_earned           Decimal? @db.Decimal(5, 2)
-  time_taken_seconds      Int?
-  feedback_given          String?
-  review_status           String?  @default("pending") @db.VarChar(50) // ENUM 'pending', 'reviewed', 'auto_graded'
-  attempt_number          Int @default(1)
-  user_input_hash         String?  @db.VarChar(255)
-  submission_timestamp    DateTime? @db.Timestamptz(6)
-  raw_response_json       Json?
-  scoring_logic_version   String?  @db.VarChar(50)
-  ai_grading_result       Json?
-  grader_user_id          Int?
-  last_modified_by        Int?
-  metadata_json           Json?
-  internal_comments       String?
-  created_at              DateTime @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  user_exam               user_exams @relation(fields: [user_exam_id], references: [id], onDelete: Cascade)
-  question                questions @relation(fields: [question_id], references: [id], onDelete: Cascade)
-  selected_answer         answers? @relation(fields: [selected_answer_id], references: [id], onDelete: SetNull)
-  grader_user             users?   @relation("UserExamAnswerGrader", fields: [grader_user_id], references: [id])
-  last_modified_by_user   users?   @relation("UserExamAnswerLastModifiedBy", fields: [last_modified_by], references: [id])
-  
-
-  @@unique([user_exam_id, question_id, attempt_number])
-}
-
-model notifications {
-  id                   Int      @id @default(autoincrement())
-  user_id              Int
-  notification_type    String   @db.VarChar(50)
-  title                String   @db.VarChar(255)
-  message              String
-  is_read              Boolean? @default(false)
-  sent_at              DateTime @default(now()) @db.Timestamptz(6)
-  read_at              DateTime? @db.Timestamptz(6)
-  target_url           String?
-  priority             String?  @default("normal") @db.VarChar(50) // ENUM 'low', 'normal', 'high'
-  icon_url             String?
-  sender_type          String?  @db.VarChar(50)
-  sender_id            Int?
-  related_entity_type  String?  @db.VarChar(100)
-  related_entity_id    Int?
-  push_sent            Boolean? @default(false)
-  email_sent           Boolean? @default(false)
-  sms_sent             Boolean? @default(false)
-  metadata_json        Json?
-  internal_notes       String?
-  created_at           DateTime @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  user                 users    @relation("NotificationsReceived", fields: [user_id], references: [id], onDelete: Cascade)
-  sender               users?   @relation("NotificationSender", fields: [sender_id], references: [id])
-}
-
-model reviews {
-  id                        Int      @id @default(autoincrement())
-  user_id                   Int
-  entity_type               String   @db.VarChar(50) // ENUM 'course', 'question_bank', 'instructor'
-  entity_id                 Int
-  rating                    Int
-  review_text               String?
-  review_date               DateTime @default(now()) @db.Timestamptz(6)
-  is_approved               Boolean? @default(false)
-  approved_by               Int?
-  approval_date             DateTime? @db.Timestamptz(6)
-  helpful_votes             Int?     @default(0)
-  unhelpful_votes           Int?     @default(0)
-  reported_count            Int?     @default(0)
-  status                    String?  @default("pending") @db.VarChar(50) // ENUM 'pending', 'published', 'rejected'
-  moderation_notes          String?
-  response_from_entity_owner String?
-  response_date             DateTime? @db.Timestamptz(6)
-  external_review_id        String?  @db.VarChar(100)
-  metadata_json             Json?
-  internal_notes            String?
-  created_at                DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  user                      users    @relation("ReviewsSubmitted", fields: [user_id], references: [id], onDelete: Cascade)
-  approved_by_user          users?   @relation("ReviewApprovedBy", fields: [approved_by], references: [id])
-}
-
-model coupons {
-  id                        Int      @id @default(autoincrement())
-  coupon_code               String   @unique @db.VarChar(50)
-  description               String?
-  discount_type             String   @db.VarChar(50) // ENUM 'percentage', 'fixed_amount'
-  discount_value            Decimal  @db.Decimal(10, 2)
-  valid_from                DateTime @db.Timestamptz(6)
-  valid_until               DateTime @db.Timestamptz(6)
-  max_uses                  Int?
-  uses_count                Int?     @default(0)
-  min_order_amount          Decimal? @db.Decimal(10, 2)
-  applies_to_entity_type    String?  @db.VarChar(50)
-  applies_to_entity_ids     Json?
-  is_active                 Boolean? @default(true)
-  created_by_user_id        Int?
-  last_modified_by          Int?
-  usage_per_user_limit      Int?     @default(1)
-  can_be_combined           Boolean? @default(false)
-  campaign_name             String?  @db.VarChar(255)
-  internal_tag              String?  @db.VarChar(100)
-  external_promo_id         String?  @db.VarChar(100)
-  metadata_json             Json?
-  internal_notes            String?
-  created_at                DateTime @default(now()) @db.Timestamptz(6)
-  updated_at                DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  created_by_user           users?   @relation("CouponCreatedBy", fields: [created_by_user_id], references: [id])
-  last_modified_by_user     users?   @relation("CouponLastModifiedBy", fields: [last_modified_by], references: [id])
-}
-
-model certificates {
-  id                    Int      @id @default(autoincrement())
-  user_id               Int
-  course_id             Int?
-  exam_id               Int?
-  certificate_url       String
-  issue_date            DateTime @default(now()) @db.Timestamptz(6)
-  expiry_date           DateTime? @db.Timestamptz(6)
-  certificate_code      String   @unique @db.VarChar(255)
-  grade_achieved        String?  @db.VarChar(50)
-  issued_by_org         String?  @db.VarChar(255)
-  template_used         String?  @db.VarChar(100)
-  validation_status     String?  @default("valid") @db.VarChar(50) // ENUM 'valid', 'revoked'
-  revocation_reason     String?
-  qr_code_url           String?
-  blockchain_hash       String?
-  digital_signature     String?
-  external_verification_link String?
-  last_emailed          DateTime? @db.Timestamptz(6)
-  metadata_json         Json?
-  internal_notes        String?
-  created_at            DateTime @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  user                  users    @relation("UserCertificates", fields: [user_id], references: [id], onDelete: Cascade)
-  course                courses? @relation(fields: [course_id], references: [id], onDelete: SetNull)
-  exam                  exams?   @relation(fields: [exam_id], references: [id], onDelete: SetNull)
-}
-
-model assets {
+model UserRoles {
   id                  Int      @id @default(autoincrement())
-  asset_name          String   @db.VarChar(255)
-  file_path           String
-  file_type           String?  @db.VarChar(100)
-  file_size_bytes     BigInt?
-  uploaded_by_user_id Int?
-  upload_date         DateTime @default(now()) @db.Timestamptz(6)
+  roleName            String   @unique @map("role_name") @db.VarChar(100)
   description         String?
-  usage_count         Int?     @default(0)
-  is_public           Boolean? @default(false)
-  storage_provider    String?  @db.VarChar(100)
-  checksum            String?  @db.VarChar(255)
-  duration_seconds    Int?
-  resolution          String?  @db.VarChar(50)
-  thumbnail_path      String?
-  cdn_url             String?
-  tags                Json?
-  version_id          String?  @db.VarChar(50)
-  metadata_json       Json?
-  internal_notes      String?
-  created_at          DateTime @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-  uploaded_by_user    users?   @relation("AssetUploadedBy", fields: [uploaded_by_user_id], references: [id], onDelete: SetNull)
+  permissionsJson     Json?    @map("permissions_json")
+  canManageUsers      Boolean? @default(false) @map("can_manage_users")
+  canCreateContent    Boolean? @default(false) @map("can_create_content")
+  canViewReports      Boolean? @default(false) @map("can_view_reports")
+  canAccessAdminPanel Boolean? @default(false) @map("can_access_admin_panel")
+  hierarchyLevel      Int?     @default(1) @map("hierarchy_level")
+  isSystemRole        Boolean? @default(false) @map("is_system_role")
+  defaultDashboardUrl String?  @map("default_dashboard_url")
+  apiAccessLevel      String?  @map("api_access_level") @db.VarChar(50)
+  relatedModuleAccess Json?    @map("related_module_access")
+  auditLogJson        Json?    @map("audit_log_json")
+  internalComments    String?  @map("internal_comments")
+  externalReferenceId String?  @map("external_reference_id") @db.VarChar(100)
+  versionControl      String?  @map("version_control") @db.VarChar(50)
+  lastModifiedBy      Int?     @map("last_modified_by")
+  isActive            Boolean? @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  users               Users[]
+  lastModifiedByUser  Users?   @relation("user_roles_last_modified_byTousers", fields: [lastModifiedBy], references: [id])
+
+  @@map("user_roles")
+}
+
+model Subjects {
+  id                    Int             @id @default(autoincrement())
+  subjectName           String          @unique @map("subject_name") @db.VarChar(255)
+  description           String?
+  iconUrl               String?         @map("icon_url")
+  isActive              Boolean?        @default(true) @map("is_active")
+  totalQuestionsCount   Int?            @default(0) @map("total_questions_count")
+  totalCoursesCount     Int?            @default(0) @map("total_courses_count")
+  averageDifficulty     Decimal?        @map("average_difficulty") @db.Decimal(3, 2)
+  relatedFieldOfStudy   String?         @map("related_field_of_study") @db.VarChar(255)
+  syllabusOutline       String?         @map("syllabus_outline")
+  externalResourceLinks Json?           @map("external_resource_links")
+  suggestedGradeLevels  String?         @map("suggested_grade_levels") @db.VarChar(100)
+  commonMisconceptions  String?         @map("common_misconceptions")
+  keyConcepts           String?         @map("key_concepts")
+  learningObjectives    String?         @map("learning_objectives")
+  assessmentMethods     String?         @map("assessment_methods")
+  lastReviewedBy        Int?            @map("last_reviewed_by")
+  metadataJson          Json?           @map("metadata_json")
+  internalNotes         String?         @map("internal_notes")
+  createdAt             DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  topics                Topics[]
+  questionBanks         QuestionBanks[]
+  questions             Questions[]
+  courses               Courses[]
+  exams                 Exams[]
+  lastReviewedByUser    Users?          @relation("SubjectLastReviewedBy", fields: [lastReviewedBy], references: [id])
+
+  @@map("subjects")
+}
+
+model Topics {
+  id                         Int             @id @default(autoincrement())
+  topicName                  String          @map("topic_name") @db.VarChar(255)
+  subjectId                  Int             @map("subject_id")
+  description                String?
+  totalQuestionsCount        Int?            @default(0) @map("total_questions_count")
+  totalLessonsCount          Int?            @default(0) @map("total_lessons_count")
+  averageScore               Decimal?        @map("average_score") @db.Decimal(5, 2)
+  prerequisiteTopics         Json?           @map("prerequisite_topics")
+  relatedKeywords            String?         @map("related_keywords")
+  learningMaterialsSuggested String?         @map("learning_materials_suggested")
+  commonErrors               String?         @map("common_errors")
+  historicalContext          String?         @map("historical_context")
+  realWorldApplications      String?         @map("real_world_applications")
+  learningTips               String?         @map("learning_tips")
+  quizAverageScore           Decimal?        @map("quiz_average_score") @db.Decimal(5, 2)
+  revisionFrequency          Int?            @default(0) @map("revision_frequency")
+  isAdvanced                 Boolean?        @default(false) @map("is_advanced")
+  externalReferenceId        String?         @map("external_reference_id") @db.VarChar(100)
+  lastUpdatedBy              Int?            @map("last_updated_by")
+  metadataJson               Json?           @map("metadata_json")
+  internalNotes              String?         @map("internal_notes")
+  createdAt                  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subject                    Subjects        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  lastUpdatedByUser          Users?          @relation("TopicLastUpdatedBy", fields: [lastUpdatedBy], references: [id])
+  questionBanks              QuestionBanks[]
+  questions                  Questions[]
+
+  @@map("topics")
+}
+
+model QuestionBanks {
+  id                           Int                 @id @default(autoincrement())
+  bankName                     String              @map("bank_name") @db.VarChar(255)
+  description                  String?
+  subjectId                    Int                 @map("subject_id")
+  topicId                      Int?                @map("topic_id")
+  price                        Decimal?            @default(0.00) @db.Decimal(10, 2)
+  status                       String?             @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
+  totalQuestions               Int?                @default(0) @map("total_questions")
+  accessDurationDays           Int?                @map("access_duration_days")
+  lastReviewedAt               DateTime?           @map("last_reviewed_at") @db.Timestamptz(6)
+  reviewedByUserId             Int?                @map("reviewed_by_user_id")
+  versionNumber                String?             @map("version_number") @db.VarChar(50)
+  language                     String?             @default("id") @db.VarChar(50)
+  targetAudience               String?             @map("target_audience")
+  usageGuidelines              String?             @map("usage_guidelines")
+  licensingDetails             String?             @map("licensing_details")
+  isPremium                    Boolean?            @default(false) @map("is_premium")
+  tags                         Json?
+  averageCompletionTimeMinutes Int?                @map("average_completion_time_minutes")
+  externalId                   String?             @map("external_id") @db.VarChar(100)
+  metadataJson                 Json?               @map("metadata_json")
+  internalNotes                String?             @map("internal_notes")
+  createdByUserId              Int                 @map("created_by_user_id")
+  createdAt                    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                    DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subject                      Subjects            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic                        Topics?             @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  createdByUser                Users               @relation("QuestionBankCreatedBy", fields: [createdByUserId], references: [id])
+  reviewedByUser               Users?              @relation("QuestionBankReviewedBy", fields: [reviewedByUserId], references: [id])
+  questions                    Questions[]         @relation("questions_question_bank_id_fkey")
+  questionBankItems            QuestionBankItems[]
+
+  @@map("question_banks")
+}
+
+model Questions {
+  id                   Int                 @id @default(autoincrement())
+  questionBankId       Int?                @map("question_bank_id")
+  subjectId            Int                 @map("subject_id")
+  topicId              Int?                @map("topic_id")
+  questionText         String              @map("question_text")
+  questionType         String              @map("question_type") @db.VarChar(50) // ENUM 'multiple_choice', 'essay', 'true_false', 'fill_in_the_blank'
+  difficultyLevel      String?             @default("medium") @map("difficulty_level") @db.VarChar(50) // ENUM 'easy', 'medium', 'hard'
+  imageUrl             String?             @map("image_url")
+  audioUrl             String?             @map("audio_url")
+  videoUrl             String?             @map("video_url")
+  explanationText      String?             @map("explanation_text")
+  correctAnswerId      Int?                @map("correct_answer_id")
+  points               Int?                @default(1)
+  timeLimitPerQuestion Int?                @map("time_limit_per_question")
+  tags                 Json?
+  isActive             Boolean?            @default(true) @map("is_active")
+  createdByUserId      Int                 @map("created_by_user_id")
+  reviewedByUserId     Int?                @map("reviewed_by_user_id")
+  lastReviewDate       DateTime?           @map("last_review_date") @db.Timestamptz(6)
+  sourceReference      String?             @map("source_reference")
+  commonMistakes       String?             @map("common_mistakes")
+  metadataJson         Json?               @map("metadata_json")
+  internalNotes        String?             @map("internal_notes")
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  questionBank         QuestionBanks?      @relation("questions_question_bank_id_fkey", fields: [questionBankId], references: [id], onDelete: SetNull)
+  subject              Subjects            @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic                Topics?             @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  answers              Answers[]
+  questionBankItems    QuestionBankItems[]
+  examQuestions        ExamQuestions[]
+  userExamAnswers      UserExamAnswers[]
+  createdByUser        Users               @relation("QuestionCreatedBy", fields: [createdByUserId], references: [id])
+  reviewedByUser       Users?              @relation("QuestionReviewedBy", fields: [reviewedByUserId], references: [id])
+
+  @@map("questions")
+}
+
+model Answers {
+  id                      Int               @id @default(autoincrement())
+  questionId              Int               @map("question_id")
+  answerText              String            @map("answer_text")
+  isCorrect               Boolean?          @default(false) @map("is_correct")
+  feedbackText            String?           @map("feedback_text")
+  imageUrl                String?           @map("image_url")
+  orderNumber             Int?              @map("order_number")
+  pointsIfSelected        Int?              @default(0) @map("points_if_selected")
+  justificationForCorrect String?           @map("justification_for_correct")
+  alternativeAnswerForms  String?           @map("alternative_answer_forms")
+  sourceReference         String?           @map("source_reference")
+  versionId               String?           @map("version_id") @db.VarChar(50)
+  externalId              String?           @map("external_id") @db.VarChar(100)
+  lastModifiedBy          Int?              @map("last_modified_by")
+  isActive                Boolean?          @default(true) @map("is_active")
+  metadataJson            Json?             @map("metadata_json")
+  internalNotes           String?           @map("internal_notes")
+  createdAt               DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  question                Questions         @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  lastModifiedByUser      Users?            @relation("AnswerLastModifiedBy", fields: [lastModifiedBy], references: [id])
+  userExamAnswers         UserExamAnswers[]
+
+  @@map("answers")
+}
+
+model QuestionBankItems {
+  id                       Int           @id @default(autoincrement())
+  questionBankId           Int           @map("question_bank_id")
+  questionId               Int           @map("question_id")
+  orderInBank              Int?          @map("order_in_bank")
+  difficultyOverride       String?       @map("difficulty_override") @db.VarChar(50)
+  isRequired               Boolean?      @default(false) @map("is_required")
+  pointsOverride           Int?          @map("points_override")
+  timeLimitOverrideSeconds Int?          @map("time_limit_override_seconds")
+  notesForThisItem         String?       @map("notes_for_this_item")
+  categoryInBank           String?       @map("category_in_bank") @db.VarChar(100)
+  addedByUserId            Int?          @map("added_by_user_id")
+  statusInBank             String?       @map("status_in_bank") @db.VarChar(50)
+  lastModifiedDate         DateTime?     @map("last_modified_date") @db.Timestamptz(6)
+  versionControl           String?       @map("version_control") @db.VarChar(50)
+  externalReferenceId      String?       @map("external_reference_id") @db.VarChar(100)
+  metadataJson             Json?         @map("metadata_json")
+  internalComments         String?       @map("internal_comments")
+  relatedTags              Json?         @map("related_tags")
+  createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  questionBank             QuestionBanks @relation(fields: [questionBankId], references: [id], onDelete: Cascade)
+  question                 Questions     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  addedByUser              Users?        @relation("QuestionBankItemAddedBy", fields: [addedByUserId], references: [id])
+
+  @@unique([questionBankId, questionId])
+  @@map("question_bank_items")
+}
+
+model Orders {
+  id              Int          @id @default(autoincrement())
+  userId          Int          @map("user_id")
+  orderDate       DateTime     @default(now()) @map("order_date") @db.Timestamptz(6)
+  totalAmount     Decimal      @map("total_amount") @db.Decimal(10, 2)
+  paymentStatus   String?      @default("pending") @map("payment_status") @db.VarChar(50) // ENUM 'pending', 'paid', 'failed', 'refunded'
+  shippingAddress String?      @map("shipping_address")
+  couponCode      String?      @map("coupon_code") @db.VarChar(50)
+  discountAmount  Decimal?     @default(0.00) @map("discount_amount") @db.Decimal(10, 2)
+  taxAmount       Decimal?     @default(0.00) @map("tax_amount") @db.Decimal(10, 2)
+  grandTotal      Decimal      @map("grand_total") @db.Decimal(10, 2)
+  paymentMethod   String?      @map("payment_method") @db.VarChar(100)
+  transactionId   String?      @unique @map("transaction_id") @db.VarChar(255)
+  orderStatus     String?      @default("created") @map("order_status") @db.VarChar(50) // ENUM 'created', 'processing', 'completed', 'cancelled'
+  notes           String?
+  billingAddress  String?      @map("billing_address")
+  ipAddress       String?      @map("ip_address")
+  deviceInfo      String?      @map("device_info")
+  currency        String?      @default("IDR") @db.VarChar(10)
+  deliveryStatus  String?      @default("N/A") @map("delivery_status") @db.VarChar(50)
+  trackingNumber  String?      @map("tracking_number") @db.VarChar(100)
+  internalRemarks String?      @map("internal_remarks")
+  metadataJson    Json?        @map("metadata_json")
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user            Users        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems      OrderItems[]
+  payments        Payments[]
+
+  @@map("orders")
+}
+
+model OrderItems {
+  id               Int       @id @default(autoincrement())
+  orderId          Int       @map("order_id")
+  itemType         String    @map("item_type") @db.VarChar(50) // ENUM 'question_bank', 'course', 'exam_access'
+  itemId           Int       @map("item_id")
+  quantity         Int?      @default(1)
+  pricePerItem     Decimal   @map("price_per_item") @db.Decimal(10, 2)
+  totalPrice       Decimal   @map("total_price") @db.Decimal(10, 2)
+  itemName         String    @map("item_name") @db.VarChar(255)
+  notes            String?
+  accessGranted    Boolean?  @default(false) @map("access_granted")
+  accessStartDate  DateTime? @map("access_start_date") @db.Timestamptz(6)
+  accessEndDate    DateTime? @map("access_end_date") @db.Timestamptz(6)
+  licenseKey       String?   @map("license_key") @db.VarChar(255)
+  downloadLink     String?   @map("download_link")
+  refundStatus     String?   @default("none") @map("refund_status") @db.VarChar(50)
+  refundAmount     Decimal?  @default(0.00) @map("refund_amount") @db.Decimal(10, 2)
+  metadataJson     Json?     @map("metadata_json")
+  internalComments String?   @map("internal_comments")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  order            Orders    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+model Payments {
+  id                 Int           @id @default(autoincrement())
+  orderId            Int           @map("order_id")
+  userId             Int           @map("user_id")
+  amount             Decimal       @db.Decimal(10, 2)
+  paymentMethod      String        @map("payment_method") @db.VarChar(100)
+  transactionId      String        @unique @map("transaction_id") @db.VarChar(255)
+  paymentStatus      String?       @default("pending") @map("payment_status") @db.VarChar(50) // ENUM 'pending', 'success', 'failed', 'refunded'
+  paymentDate        DateTime      @default(now()) @map("payment_date") @db.Timestamptz(6)
+  currency           String?       @default("IDR") @db.VarChar(10)
+  gatewayResponse    String?       @map("gateway_response")
+  fees               Decimal?      @default(0.00) @db.Decimal(10, 2)
+  refundStatus       String?       @default("none") @map("refund_status") @db.VarChar(50) // ENUM 'none', 'partial', 'full'
+  refundDate         DateTime?     @map("refund_date") @db.Timestamptz(6)
+  receiptUrl         String?       @map("receipt_url")
+  notes              String?
+  capturedAt         DateTime?     @map("captured_at") @db.Timestamptz(6)
+  authorizationCode  String?       @map("authorization_code") @db.VarChar(100)
+  paymentGatewayName String?       @map("payment_gateway_name") @db.VarChar(100)
+  errorCode          String?       @map("error_code") @db.VarChar(50)
+  errorMessage       String?       @map("error_message")
+  internalReference  String?       @map("internal_reference")
+  metadataJson       Json?         @map("metadata_json")
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  order              Orders        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user               Users         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userCourses        UserCourses[]
+
+  @@map("payments")
+}
+
+model Courses {
+  id                     Int                @id @default(autoincrement())
+  courseTitle            String             @map("course_title") @db.VarChar(255)
+  description            String?
+  subjectId              Int                @map("subject_id")
+  difficultyLevel        String?            @default("beginner") @map("difficulty_level") @db.VarChar(50) // ENUM 'beginner', 'intermediate', 'advanced'
+  price                  Decimal?           @default(0.00) @db.Decimal(10, 2)
+  durationHours          Int?               @map("duration_hours")
+  instructorId           Int?               @map("instructor_id")
+  status                 String?            @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
+  thumbnailUrl           String?            @map("thumbnail_url")
+  introductionVideoUrl   String?            @map("introduction_video_url")
+  prerequisites          String?
+  learningOutcomes       String?            @map("learning_outcomes")
+  enrollmentCount        Int?               @default(0) @map("enrollment_count")
+  rating                 Decimal?           @default(0.00) @db.Decimal(3, 2)
+  reviewCount            Int?               @default(0) @map("review_count")
+  lastUpdated            DateTime           @default(now()) @map("last_updated") @db.Timestamptz(6)
+  syllabusPdfUrl         String?            @map("syllabus_pdf_url")
+  certificationAvailable Boolean?           @default(false) @map("certification_available")
+  externalCourseId       String?            @map("external_course_id") @db.VarChar(100)
+  metadataJson           Json?              @map("metadata_json")
+  internalNotes          String?            @map("internal_notes")
+  createdByUserId        Int                @map("created_by_user_id")
+  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subject                Subjects           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  instructor             Users?             @relation("CourseInstructor", fields: [instructorId], references: [id], onDelete: SetNull)
+  createdByUser          Users              @relation("CourseCreatedBy", fields: [createdByUserId], references: [id])
+  modules                Modules[]
+  userCourses            UserCourses[]
+  progressTracking       ProgressTracking[]
+  certificates           Certificates[]
+
+  @@map("courses")
+}
+
+model Modules {
+  id                             Int                @id @default(autoincrement())
+  courseId                       Int                @map("course_id")
+  moduleTitle                    String             @map("module_title") @db.VarChar(255)
+  description                    String?
+  moduleOrder                    Int                @map("module_order")
+  durationMinutes                Int?               @map("duration_minutes")
+  isFreePreview                  Boolean?           @default(false) @map("is_free_preview")
+  status                         String?            @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
+  totalLessons                   Int?               @default(0) @map("total_lessons")
+  quizId                         Int?               @map("quiz_id")
+  learningObjectives             String?            @map("learning_objectives")
+  resourcesLinks                 Json?              @map("resources_links")
+  estimatedCompletionTimeMinutes Int?               @map("estimated_completion_time_minutes")
+  moduleDependency               Json?              @map("module_dependency")
+  versionNumber                  String?            @map("version_number") @db.VarChar(50)
+  externalReferenceId            String?            @map("external_reference_id") @db.VarChar(100)
+  lastModifiedBy                 Int?               @map("last_modified_by")
+  metadataJson                   Json?              @map("metadata_json")
+  internalNotes                  String?            @map("internal_notes")
+  createdAt                      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                      DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  course                         Courses            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lastModifiedByUser             Users?             @relation("ModuleLastModifiedBy", fields: [lastModifiedBy], references: [id])
+  lessons                        Lessons[]
+  progressTracking               ProgressTracking[]
+
+  @@map("modules")
+}
+
+model Lessons {
+  id                          Int                @id @default(autoincrement())
+  moduleId                    Int                @map("module_id")
+  lessonTitle                 String             @map("lesson_title") @db.VarChar(255)
+  lessonType                  String             @map("lesson_type") @db.VarChar(50) // ENUM 'video', 'text', 'quiz', 'assignment', 'file'
+  contentUrl                  String?            @map("content_url")
+  contentText                 String?            @map("content_text")
+  durationMinutes             Int?               @map("duration_minutes")
+  isCompleted                 Boolean?           @default(false) @map("is_completed")
+  isPreview                   Boolean?           @default(false) @map("is_preview")
+  orderInModule               Int                @map("order_in_module")
+  quizId                      Int?               @map("quiz_id")
+  discussionForumLink         String?            @map("discussion_forum_link")
+  attachmentsJson             Json?              @map("attachments_json")
+  notesForLesson              String?            @map("notes_for_lesson")
+  resourceLinksJson           Json?              @map("resource_links_json")
+  status                      String?            @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'archived'
+  estimatedReadingTimeMinutes Int?               @map("estimated_reading_time_minutes")
+  transcriptionText           String?            @map("transcription_text")
+  tags                        Json?
+  versionId                   String?            @map("version_id") @db.VarChar(50)
+  externalAssetId             String?            @map("external_asset_id") @db.VarChar(100)
+  lastUpdatedBy               Int?               @map("last_updated_by")
+  metadataJson                Json?              @map("metadata_json")
+  internalComments            String?            @map("internal_comments")
+  createdAt                   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  module                      Modules            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lastUpdatedByUser           Users?             @relation("LessonLastUpdatedBy", fields: [lastUpdatedBy], references: [id])
+  progressTracking            ProgressTracking[]
+
+  @@map("lessons")
+}
+
+model UserCourses {
+  id                    Int       @id @default(autoincrement())
+  userId                Int       @map("user_id")
+  courseId              Int       @map("course_id")
+  enrollmentDate        DateTime  @default(now()) @map("enrollment_date") @db.Timestamptz(6)
+  completionDate        DateTime? @map("completion_date") @db.Timestamptz(6)
+  progressPercentage    Decimal?  @default(0.00) @map("progress_percentage") @db.Decimal(5, 2)
+  status                String?   @default("in_progress") @db.VarChar(50) // ENUM 'in_progress', 'completed', 'dropped', 'paused'
+  lastAccessedAt        DateTime  @default(now()) @map("last_accessed_at") @db.Timestamptz(6)
+  certificateUrl        String?   @map("certificate_url")
+  score                 Decimal?  @db.Decimal(5, 2)
+  reviewGiven           Boolean?  @default(false) @map("review_given")
+  ratingGiven           Int?      @map("rating_given")
+  paymentId             Int?      @map("payment_id")
+  accessSource          String?   @map("access_source") @db.VarChar(100)
+  enrollmentMethod      String?   @map("enrollment_method") @db.VarChar(100)
+  timeSpentTotalMinutes Int?      @map("time_spent_total_minutes")
+  feedbackNotes         String?   @map("feedback_notes")
+  internalTrackingId    String?   @map("internal_tracking_id") @db.VarChar(100)
+  metadataJson          Json?     @map("metadata_json")
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                  Users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course                Courses   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  payment               Payments? @relation(fields: [paymentId], references: [id])
+
+  @@unique([userId, courseId])
+  @@map("user_courses")
+}
+
+model ProgressTracking {
+  id                     Int       @id @default(autoincrement())
+  userId                 Int       @map("user_id")
+  lessonId               Int       @map("lesson_id")
+  courseId               Int       @map("course_id")
+  moduleId               Int       @map("module_id")
+  isCompleted            Boolean?  @default(false) @map("is_completed")
+  completionTimestamp    DateTime? @map("completion_timestamp") @db.Timestamptz(6)
+  timeSpentSeconds       Int?      @default(0) @map("time_spent_seconds")
+  lastAccessedTimestamp  DateTime  @default(now()) @map("last_accessed_timestamp") @db.Timestamptz(6)
+  notes                  String?
+  score                  Decimal?  @db.Decimal(5, 2)
+  attemptsCount          Int?      @default(0) @map("attempts_count")
+  watchedPercentage      Decimal?  @map("watched_percentage") @db.Decimal(5, 2)
+  readProgressPercentage Decimal?  @map("read_progress_percentage") @db.Decimal(5, 2)
+  lastInteractionType    String?   @map("last_interaction_type") @db.VarChar(50)
+  deviceUsed             String?   @map("device_used") @db.VarChar(100)
+  ipAddress              String?   @map("ip_address")
+  browserInfo            String?   @map("browser_info")
+  sessionId              String?   @map("session_id") @db.VarChar(255)
+  internalDebugInfo      String?   @map("internal_debug_info")
+  metadataJson           Json?     @map("metadata_json")
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                   Users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson                 Lessons   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  course                 Courses   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  module                 Modules   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@map("progress_tracking")
+}
+
+model Exams {
+  id                     Int             @id @default(autoincrement())
+  examName               String          @map("exam_name") @db.VarChar(255)
+  description            String?
+  subjectId              Int             @map("subject_id")
+  durationMinutes        Int             @map("duration_minutes")
+  startTime              DateTime?       @map("start_time") @db.Timestamptz(6)
+  endTime                DateTime?       @map("end_time") @db.Timestamptz(6)
+  totalQuestions         Int?            @default(0) @map("total_questions")
+  passingScore           Decimal?        @map("passing_score") @db.Decimal(5, 2)
+  attemptsAllowed        Int?            @default(1) @map("attempts_allowed")
+  examType               String          @map("exam_type") @db.VarChar(50) // ENUM 'tryout', 'quiz', 'final_exam', 'practice'
+  status                 String?         @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'closed', 'archived'
+  price                  Decimal?        @default(0.00) @db.Decimal(10, 2)
+  availableUntil         DateTime?       @map("available_until") @db.Timestamptz(6)
+  createdByUserId        Int             @map("created_by_user_id")
+  randomizeQuestions     Boolean?        @default(true) @map("randomize_questions")
+  randomizeAnswers       Boolean?        @default(true) @map("randomize_answers")
+  showResultsImmediately Boolean?        @default(false) @map("show_results_immediately")
+  feedbackLevel          String?         @map("feedback_level") @db.VarChar(50)
+  certificationOnPass    Boolean?        @default(false) @map("certification_on_pass")
+  externalExamId         String?         @map("external_exam_id") @db.VarChar(100)
+  metadataJson           Json?           @map("metadata_json")
+  internalNotes          String?         @map("internal_notes")
+  createdAt              DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subject                Subjects        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdByUser          Users           @relation("ExamCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  examQuestions          ExamQuestions[]
+  userExams              UserExams[]
+  certificates           Certificates[]
+
+  @@map("exams")
+}
+
+model ExamQuestions {
+  id                       Int       @id @default(autoincrement())
+  examId                   Int       @map("exam_id")
+  questionId               Int       @map("question_id")
+  orderInExam              Int?      @map("order_in_exam")
+  pointsForQuestion        Decimal?  @default(1.0) @map("points_for_question") @db.Decimal(5, 2)
+  sectionName              String?   @map("section_name") @db.VarChar(100)
+  isBonusQuestion          Boolean?  @default(false) @map("is_bonus_question")
+  timeLimitOverrideSeconds Int?      @map("time_limit_override_seconds")
+  difficultyOverride       String?   @map("difficulty_override") @db.VarChar(50)
+  notesForExaminer         String?   @map("notes_for_examiner")
+  internalCategory         String?   @map("internal_category") @db.VarChar(100)
+  versionId                String?   @map("version_id") @db.VarChar(50)
+  addedByUserId            Int?      @map("added_by_user_id")
+  lastModifiedDate         DateTime? @map("last_modified_date") @db.Timestamptz(6)
+  externalReferenceId      String?   @map("external_reference_id") @db.VarChar(100)
+  metadataJson             Json?     @map("metadata_json")
+  internalComments         String?   @map("internal_comments")
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  exam                     Exams     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question                 Questions @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  addedByUser              Users?    @relation("ExamQuestionAddedBy", fields: [addedByUserId], references: [id])
+
+  @@unique([examId, questionId])
+  @@map("exam_questions")
+}
+
+model UserExams {
+  id                Int               @id @default(autoincrement())
+  userId            Int               @map("user_id")
+  examId            Int               @map("exam_id")
+  startTime         DateTime          @default(now()) @map("start_time") @db.Timestamptz(6)
+  endTime           DateTime?         @map("end_time") @db.Timestamptz(6)
+  score             Decimal?          @db.Decimal(5, 2)
+  isCompleted       Boolean?          @default(false) @map("is_completed")
+  submissionTime    DateTime?         @map("submission_time") @db.Timestamptz(6)
+  attemptsCount     Int?              @default(1) @map("attempts_count")
+  status            String?           @default("started") @db.VarChar(50) // ENUM 'started', 'submitted', 'graded', 'abandoned'
+  notes             String?
+  ipAddress         String?           @map("ip_address")
+  deviceInfo        String?           @map("device_info")
+  timeTakenSeconds  Int?              @map("time_taken_seconds")
+  passingStatus     Boolean?          @map("passing_status")
+  certificateIssued Boolean?          @default(false) @map("certificate_issued")
+  proctoringStatus  String?           @map("proctoring_status") @db.VarChar(50)
+  finalGrade        String?           @map("final_grade") @db.VarChar(10)
+  examVersionTaken  String?           @map("exam_version_taken") @db.VarChar(50)
+  externalSessionId String?           @map("external_session_id") @db.VarChar(100)
+  metadataJson      Json?             @map("metadata_json")
+  internalRemarks   String?           @map("internal_remarks")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user              Users             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam              Exams             @relation(fields: [examId], references: [id], onDelete: Cascade)
+  userExamAnswers   UserExamAnswers[]
+
+  @@unique([userId, examId, attemptsCount])
+  @@map("user_exams")
+}
+
+model UserExamAnswers {
+  id                  Int       @id @default(autoincrement())
+  userExamId          Int       @map("user_exam_id")
+  questionId          Int       @map("question_id")
+  userAnswer          String?   @map("user_answer")
+  selectedAnswerId    Int?      @map("selected_answer_id")
+  isCorrect           Boolean?  @map("is_correct")
+  pointsEarned        Decimal?  @map("points_earned") @db.Decimal(5, 2)
+  timeTakenSeconds    Int?      @map("time_taken_seconds")
+  feedbackGiven       String?   @map("feedback_given")
+  reviewStatus        String?   @default("pending") @map("review_status") @db.VarChar(50) // ENUM 'pending', 'reviewed', 'auto_graded'
+  attemptNumber       Int       @default(1) @map("attempt_number")
+  userInputHash       String?   @map("user_input_hash") @db.VarChar(255)
+  submissionTimestamp DateTime? @map("submission_timestamp") @db.Timestamptz(6)
+  rawResponseJson     Json?     @map("raw_response_json")
+  scoringLogicVersion String?   @map("scoring_logic_version") @db.VarChar(50)
+  aiGradingResult     Json?     @map("ai_grading_result")
+  graderUserId        Int?      @map("grader_user_id")
+  lastModifiedBy      Int?      @map("last_modified_by")
+  metadataJson        Json?     @map("metadata_json")
+  internalComments    String?   @map("internal_comments")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  userExam            UserExams @relation(fields: [userExamId], references: [id], onDelete: Cascade)
+  question            Questions @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedAnswer      Answers?  @relation(fields: [selectedAnswerId], references: [id], onDelete: SetNull)
+  graderUser          Users?    @relation("UserExamAnswerGrader", fields: [graderUserId], references: [id])
+  lastModifiedByUser  Users?    @relation("UserExamAnswerLastModifiedBy", fields: [lastModifiedBy], references: [id])
+
+  @@unique([userExamId, questionId, attemptNumber])
+  @@map("user_exam_answers")
+}
+
+model Notifications {
+  id                Int       @id @default(autoincrement())
+  userId            Int       @map("user_id")
+  notificationType  String    @map("notification_type") @db.VarChar(50)
+  title             String    @db.VarChar(255)
+  message           String
+  isRead            Boolean?  @default(false) @map("is_read")
+  sentAt            DateTime  @default(now()) @map("sent_at") @db.Timestamptz(6)
+  readAt            DateTime? @map("read_at") @db.Timestamptz(6)
+  targetUrl         String?   @map("target_url")
+  priority          String?   @default("normal") @db.VarChar(50) // ENUM 'low', 'normal', 'high'
+  iconUrl           String?   @map("icon_url")
+  senderType        String?   @map("sender_type") @db.VarChar(50)
+  senderId          Int?      @map("sender_id")
+  relatedEntityType String?   @map("related_entity_type") @db.VarChar(100)
+  relatedEntityId   Int?      @map("related_entity_id")
+  pushSent          Boolean?  @default(false) @map("push_sent")
+  emailSent         Boolean?  @default(false) @map("email_sent")
+  smsSent           Boolean?  @default(false) @map("sms_sent")
+  metadataJson      Json?     @map("metadata_json")
+  internalNotes     String?   @map("internal_notes")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user              Users     @relation("NotificationsReceived", fields: [userId], references: [id], onDelete: Cascade)
+  sender            Users?    @relation("NotificationSender", fields: [senderId], references: [id])
+
+  @@map("notifications")
+}
+
+model Reviews {
+  id                      Int       @id @default(autoincrement())
+  userId                  Int       @map("user_id")
+  entityType              String    @map("entity_type") @db.VarChar(50) // ENUM 'course', 'question_bank', 'instructor'
+  entityId                Int       @map("entity_id")
+  rating                  Int
+  reviewText              String?   @map("review_text")
+  reviewDate              DateTime  @default(now()) @map("review_date") @db.Timestamptz(6)
+  isApproved              Boolean?  @default(false) @map("is_approved")
+  approvedBy              Int?      @map("approved_by")
+  approvalDate            DateTime? @map("approval_date") @db.Timestamptz(6)
+  helpfulVotes            Int?      @default(0) @map("helpful_votes")
+  unhelpfulVotes          Int?      @default(0) @map("unhelpful_votes")
+  reportedCount           Int?      @default(0) @map("reported_count")
+  status                  String?   @default("pending") @db.VarChar(50) // ENUM 'pending', 'published', 'rejected'
+  moderationNotes         String?   @map("moderation_notes")
+  responseFromEntityOwner String?   @map("response_from_entity_owner")
+  responseDate            DateTime? @map("response_date") @db.Timestamptz(6)
+  externalReviewId        String?   @map("external_review_id") @db.VarChar(100)
+  metadataJson            Json?     @map("metadata_json")
+  internalNotes           String?   @map("internal_notes")
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                    Users     @relation("ReviewsSubmitted", fields: [userId], references: [id], onDelete: Cascade)
+  approvedByUser          Users?    @relation("ReviewApprovedBy", fields: [approvedBy], references: [id])
+
+  @@map("reviews")
+}
+
+model Coupons {
+  id                  Int      @id @default(autoincrement())
+  couponCode          String   @unique @map("coupon_code") @db.VarChar(50)
+  description         String?
+  discountType        String   @map("discount_type") @db.VarChar(50) // ENUM 'percentage', 'fixed_amount'
+  discountValue       Decimal  @map("discount_value") @db.Decimal(10, 2)
+  validFrom           DateTime @map("valid_from") @db.Timestamptz(6)
+  validUntil          DateTime @map("valid_until") @db.Timestamptz(6)
+  maxUses             Int?     @map("max_uses")
+  usesCount           Int?     @default(0) @map("uses_count")
+  minOrderAmount      Decimal? @map("min_order_amount") @db.Decimal(10, 2)
+  appliesToEntityType String?  @map("applies_to_entity_type") @db.VarChar(50)
+  appliesToEntityIds  Json?    @map("applies_to_entity_ids")
+  isActive            Boolean? @default(true) @map("is_active")
+  createdByUserId     Int?     @map("created_by_user_id")
+  lastModifiedBy      Int?     @map("last_modified_by")
+  usagePerUserLimit   Int?     @default(1) @map("usage_per_user_limit")
+  canBeCombined       Boolean? @default(false) @map("can_be_combined")
+  campaignName        String?  @map("campaign_name") @db.VarChar(255)
+  internalTag         String?  @map("internal_tag") @db.VarChar(100)
+  externalPromoId     String?  @map("external_promo_id") @db.VarChar(100)
+  metadataJson        Json?    @map("metadata_json")
+  internalNotes       String?  @map("internal_notes")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdByUser       Users?   @relation("CouponCreatedBy", fields: [createdByUserId], references: [id])
+  lastModifiedByUser  Users?   @relation("CouponLastModifiedBy", fields: [lastModifiedBy], references: [id])
+
+  @@map("coupons")
+}
+
+model Certificates {
+  id                       Int       @id @default(autoincrement())
+  userId                   Int       @map("user_id")
+  courseId                 Int?      @map("course_id")
+  examId                   Int?      @map("exam_id")
+  certificateUrl           String    @map("certificate_url")
+  issueDate                DateTime  @default(now()) @map("issue_date") @db.Timestamptz(6)
+  expiryDate               DateTime? @map("expiry_date") @db.Timestamptz(6)
+  certificateCode          String    @unique @map("certificate_code") @db.VarChar(255)
+  gradeAchieved            String?   @map("grade_achieved") @db.VarChar(50)
+  issuedByOrg              String?   @map("issued_by_org") @db.VarChar(255)
+  templateUsed             String?   @map("template_used") @db.VarChar(100)
+  validationStatus         String?   @default("valid") @map("validation_status") @db.VarChar(50) // ENUM 'valid', 'revoked'
+  revocationReason         String?   @map("revocation_reason")
+  qrCodeUrl                String?   @map("qr_code_url")
+  blockchainHash           String?   @map("blockchain_hash")
+  digitalSignature         String?   @map("digital_signature")
+  externalVerificationLink String?   @map("external_verification_link")
+  lastEmailed              DateTime? @map("last_emailed") @db.Timestamptz(6)
+  metadataJson             Json?     @map("metadata_json")
+  internalNotes            String?   @map("internal_notes")
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                     Users     @relation("UserCertificates", fields: [userId], references: [id], onDelete: Cascade)
+  course                   Courses?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  exam                     Exams?    @relation(fields: [examId], references: [id], onDelete: SetNull)
+
+  @@map("certificates")
+}
+
+model Assets {
+  id               Int      @id @default(autoincrement())
+  assetName        String   @map("asset_name") @db.VarChar(255)
+  filePath         String   @map("file_path")
+  fileType         String?  @map("file_type") @db.VarChar(100)
+  fileSizeBytes    BigInt?  @map("file_size_bytes")
+  uploadedByUserId Int?     @map("uploaded_by_user_id")
+  uploadDate       DateTime @default(now()) @map("upload_date") @db.Timestamptz(6)
+  description      String?
+  usageCount       Int?     @default(0) @map("usage_count")
+  isPublic         Boolean? @default(false) @map("is_public")
+  storageProvider  String?  @map("storage_provider") @db.VarChar(100)
+  checksum         String?  @db.VarChar(255)
+  durationSeconds  Int?     @map("duration_seconds")
+  resolution       String?  @db.VarChar(50)
+  thumbnailPath    String?  @map("thumbnail_path")
+  cdnUrl           String?  @map("cdn_url")
+  tags             Json?
+  versionId        String?  @map("version_id") @db.VarChar(50)
+  metadataJson     Json?    @map("metadata_json")
+  internalNotes    String?  @map("internal_notes")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  uploadedByUser   Users?   @relation("AssetUploadedBy", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
+  @@map("assets")
 }
