@@ -1,5 +1,5 @@
 // src/exams/exams.service.ts
-import { Injectable, NotFoundException,BadRequestException  } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -8,50 +8,41 @@ export class ExamsService {
 
   // --- CRUD EXAMS ---
   async createExam(data: any, userId: number) {
-    // Kita pisahkan field yang butuh konversi agar tidak duplikat di spread operator (...)
-    const { passing_score, price, ...rest } = data;
+    const { passingScore, price, ...rest } = data;
 
     return this.prisma.exams.create({
       data: {
-        ...rest, // Sisa data lainnya
-        passing_score: passing_score ? parseFloat(passing_score) : null,
+        ...rest,
+        passingScore: passingScore ? parseFloat(passingScore) : null,
         price: price ? parseFloat(price) : 0,
-        created_by_user_id: userId, // Diambil dari JWT
+        createdByUserId: userId, 
       },
     });
   }
-  // async createExam(data: any, userId: number) {
-  //   return this.prisma.exams.create({
-  //     data: {
-  //       ...data,
-  //       created_by_user_id: userId, // Wajib sesuai tabel [cite: 107]
-  //     },
-  //   });
-  // }
 
-  // Get Exam Lengkap (Exam -> Exam_Questions -> Questions -> Answers)
-    async findOneExam(id: number) {
+  // Get Exam Lengkap (Exams -> ExamQuestions -> Questions -> Answers)
+  async findOneExam(id: number) {
     const exam = await this.prisma.exams.findUnique({
-        where: { id },
-        include: {
-        exam_questions: { 
-            orderBy: { 
-            order_in_exam: 'asc' 
+      where: { id },
+      include: {
+        examQuestions: { // CamelCase
+          orderBy: { 
+            orderInExam: 'asc' // CamelCase
+          },
+          include: {
+            question: { 
+              include: {
+                answers: true, 
+              },
             },
-            include: {
-            question: { // Ubah dari 'questions' menjadi 'question' 
-                include: {
-                answers: true, // Relasi ke tabel answers [cite: 40]
-                },
-            },
-            },
+          },
         },
-        },
+      },
     });
 
     if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
     return exam;
-    }
+  }
 
   // --- CRUD QUESTIONS ---
   async createQuestion(data: any, userId: number) {
@@ -59,20 +50,19 @@ export class ExamsService {
       data: {
         ...data,
         points: data.points ? parseInt(data.points) : 0,
-        time_limit_per_question: data.time_limit_per_question ? parseInt(data.time_limit_per_question) : null,
-        created_by_user_id: userId, // Diambil otomatis dari JWT
-        is_active: data.is_active ?? true,
+        timeLimitPerQuestion: data.timeLimitPerQuestion ? parseInt(data.timeLimitPerQuestion) : null,
+        createdByUserId: userId,
+        isActive: data.isActive ?? true,
       },
     });
   }
 
-  // --- MENGHUBUNGKAN SOAL KE UJIAN (Exam_Questions) ---
+  // --- MENGHUBUNGKAN SOAL KE UJIAN (ExamQuestions) ---
   async addQuestionToExam(data: any) {
-    // 1. Cek dulu apakah koneksi soal dan exam ini sudah ada
-    const existing = await this.prisma.exam_questions.findFirst({
+    const existing = await this.prisma.examQuestions.findFirst({
       where: {
-        exam_id: parseInt(data.exam_id),
-        question_id: parseInt(data.question_id),
+        examId: parseInt(data.examId),
+        questionId: parseInt(data.questionId),
       },
     });
 
@@ -80,160 +70,128 @@ export class ExamsService {
       throw new BadRequestException('Soal ini sudah terdaftar di dalam ujian ini!');
     }
 
-    // 2. Jika belum ada, baru buat
-    return this.prisma.exam_questions.create({
+    return this.prisma.examQuestions.create({
       data: {
-        exam_id: parseInt(data.exam_id),
-        question_id: parseInt(data.question_id),
-        order_in_exam: data.order_in_exam ? parseInt(data.order_in_exam) : 1,
-        points_for_question: data.points_for_question ? parseFloat(data.points_for_question) : 1.0,
+        examId: parseInt(data.examId),
+        questionId: parseInt(data.questionId),
+        orderInExam: data.orderInExam ? parseInt(data.orderInExam) : 1,
+        pointsForQuestion: data.pointsForQuestion ? parseFloat(data.pointsForQuestion) : 1.0,
       },
     });
   }
-  // async addQuestionToExam(data: any) {
-  //   return this.prisma.exam_questions.create({
-  //     data: {
-  //       exam_id: parseInt(data.exam_id),
-  //       question_id: parseInt(data.question_id),
-  //       // Jika order_in_exam tidak diisi, otomatis jadi 1
-  //       order_in_exam: data.order_in_exam ? parseInt(data.order_in_exam) : 1,
-  //       // Jika poin tidak diisi, otomatis jadi 1.0
-  //       points_for_question: data.points_for_question ? parseFloat(data.points_for_question) : 1.0,
-  //     },
-  //   });
-  // }
 
   // --- CRUD ANSWERS ---
   async createAnswer(data: any, userId: number) {
     const answer = await this.prisma.answers.create({
       data: {
         ...data,
-        order_number: data.order_number ? parseInt(data.order_number) : 1,
-        points_if_selected: data.points_if_selected ? parseInt(data.points_if_selected) : 0,
-        last_modified_by: userId,
-        is_active: data.is_active ?? true,
+        orderNumber: data.orderNumber ? parseInt(data.orderNumber) : 1,
+        pointsIfSelected: data.pointsIfSelected ? parseInt(data.pointsIfSelected) : 0,
+        lastModifiedBy: userId,
+        isActive: data.isActive ?? true,
       },
     });
 
-    // JIKA jawaban ini ditandai sebagai yang benar (is_correct: true)
-    if (data.is_correct === true) {
+    if (data.isCorrect === true) {
       await this.prisma.questions.update({
-        where: { id: data.question_id },
-        data: { correct_answer_id: answer.id },
+        where: { id: data.questionId },
+        data: { correctAnswerId: answer.id },
       });
     }
 
     return answer;
   }
 
+  // --- Mekanisme Ujian (User Exam Attempt) ---
+  async startExam(examId: number, userId: number) {
+    return this.prisma.userExams.create({
+      data: {
+        examId: examId,
+        userId: userId,
+        startTime: new Date(),
+        status: 'in_progress',
+      },
+    });
+  }
 
-//   ini fungsi untuk Mekanisme Ujian (User Exam Attempt).
-// src/exams/exams.service.ts
-
-async startExam(examId: number, userId: number) {
-  return this.prisma.user_exams.create({
-    data: {
-      exam_id: examId,
-      user_id: userId,
-      start_time: new Date(),
-      status: 'in_progress',
-    },
-  });
-}
-
-async submitAnswer(userExamId: number, questionId: number, answerId: number) {
-  // Kita cari dulu apakah jawaban untuk soal ini sudah ada
-  const existingAnswer = await this.prisma.user_exam_answers.findFirst({
-    where: {
-      user_exam_id: userExamId,
-      question_id: questionId
-    }
-  });
-
-  if (existingAnswer) {
-    // Jika ada, kita update
-    return this.prisma.user_exam_answers.update({
-      where: { id: existingAnswer.id },
-      data: { 
-        selected_answer_id: answerId,
-        updated_at: new Date()
+  async submitAnswer(userExamId: number, questionId: number, answerId: number) {
+    const existingAnswer = await this.prisma.userExamAnswers.findFirst({
+      where: {
+        userExamId: userExamId,
+        questionId: questionId
       }
     });
-  } else {
-    // Jika tidak ada, kita buat baru
-    return this.prisma.user_exam_answers.create({
-      data: {
-        user_exam_id: userExamId,
-        question_id: questionId,
-        selected_answer_id: answerId,
-        attempt_number: 1, // Masukkan field yang tadi error 'missing'
-      },
+
+    if (existingAnswer) {
+      return this.prisma.userExamAnswers.update({
+        where: { id: existingAnswer.id },
+        data: { 
+          selectedAnswerId: answerId,
+          updatedAt: new Date()
+        }
+      });
+    } else {
+      return this.prisma.userExamAnswers.create({
+        data: {
+          userExamId: userExamId,
+          questionId: questionId,
+          selectedAnswerId: answerId,
+          attemptNumber: 1, 
+        },
+      });
+    }
+  }
+
+  async finishExam(userExamId: number) {
+    const userExam = await this.prisma.userExams.findUnique({
+      where: { id: userExamId },
+      select: { id: true, examId: true }
     });
-  }
-}
 
-// src/exams/exams.service.ts
-async finishExam(userExamId: number) {
-  // 1. Ambil data User Exam untuk mendapatkan exam_id-nya
-  const userExam = await this.prisma.user_exams.findUnique({
-    where: { id: userExamId },
-    select: { id: true, exam_id: true }
-  });
+    if (!userExam) {
+      throw new NotFoundException(`Sesi ujian ID ${userExamId} tidak ditemukan`);
+    }
 
-  if (!userExam) {
-    throw new NotFoundException(`Sesi ujian ID ${userExamId} tidak ditemukan`);
-  }
-
-  // 2. Ambil semua jawaban user beserta bobot poin dari tabel linker (exam_questions)
-  // Kita join ke tabel answers untuk cek is_correct dan exam_questions untuk ambil poin dinamis
-  const userAnswers = await this.prisma.user_exam_answers.findMany({
-    where: { user_exam_id: userExamId },
-    include: {
-      // Join ke tabel jawaban yang dipilih user
-      selected_answer: {
-        select: { is_correct: true }
-      },
-      // Join ke tabel soal -> exam_questions untuk ambil poin khusus ujian ini
-      question: {
-        include: {
-          exam_questions: {
-            where: { exam_id: userExam.exam_id }
+    const userAnswers = await this.prisma.userExamAnswers.findMany({
+      where: { userExamId: userExamId },
+      include: {
+        selectedAnswer: {
+          select: { isCorrect: true }
+        },
+        question: {
+          include: {
+            examQuestions: {
+              where: { examId: userExam.examId }
+            }
           }
         }
       }
-    }
-  });
+    });
 
-  if (!userAnswers.length) {
-    throw new NotFoundException('Tidak ada jawaban yang ditemukan untuk sesi ini');
+    if (!userAnswers.length) {
+      throw new NotFoundException('Tidak ada jawaban yang ditemukan untuk sesi ini');
+    }
+
+    const totalScore = userAnswers.reduce((acc, curr) => {
+      const isCorrect = curr.selectedAnswer?.isCorrect || false;
+      
+      if (isCorrect) {
+        const point = Number(curr.question.examQuestions[0]?.pointsForQuestion || 0);
+        return acc + point;
+      }
+      
+      return acc;
+    }, 0);
+
+    return this.prisma.userExams.update({
+      where: { id: userExamId },
+      data: {
+        endTime: new Date(),
+        submissionTime: new Date(),
+        score: totalScore,
+        isCompleted: true,
+        status: 'submitted'
+      }
+    });
   }
-
-  // 3. Hitung total skor dengan casting Number() untuk akurasi desimal
-  const totalScore = userAnswers.reduce((acc, curr) => {
-    // Cek apakah jawaban yang dipilih user benar
-    const isCorrect = curr.selected_answer?.is_correct || false;
-    
-    if (isCorrect) {
-      // Ambil poin dari tabel exam_questions (linker), default ke 0 jika tidak ada
-      const point = Number(curr.question.exam_questions[0]?.points_for_question || 0);
-      return acc + point;
-    }
-    
-    return acc;
-  }, 0);
-
-  // 4. Update status dan skor akhir ke tabel user_exams
-  return this.prisma.user_exams.update({
-    where: { id: userExamId },
-    data: {
-      end_time: new Date(),
-      submission_time: new Date(),
-      score: totalScore,           // Menyimpan hasil kalkulasi Number()
-      is_completed: true,
-      status: 'submitted'          // Mengubah status dari 'In Progress' ke 'submitted'
-    }
-  });
-}
-
-
 }

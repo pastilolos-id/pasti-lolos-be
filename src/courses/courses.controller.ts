@@ -1,5 +1,9 @@
 // src/courses/courses.controller.ts
-import { Controller, Get, Post, Body, Param, UseGuards, Req ,Patch} from '@nestjs/common';
+import { 
+  Controller, Get, Post, Body, Param, UseGuards, Req, Patch, 
+  UseInterceptors, UploadedFile 
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CoursesService } from './courses.service';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -39,7 +43,12 @@ export class CoursesController {
   // 5. Create Lesson (Materi/Video/Teks)
   @Post('lesson')
   @UseGuards(AuthGuard('jwt')) 
-  createLesson(@Body() body: any) {
+  @UseInterceptors(FileInterceptor('file'))
+  async createLesson(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: any,
+    @Req() req: any
+  ){
     return this.coursesService.createLesson(body);
   }
 
@@ -47,8 +56,13 @@ export class CoursesController {
 
     @Post('subjects')
     @UseGuards(AuthGuard('jwt')) 
-    createSubject(@Body() body: any) {
-    return this.coursesService.createSubject(body);
+    @UseInterceptors(FileInterceptor('file')) // Key di Postman harus 'file'
+    async createSubject(
+      @UploadedFile() file: Express.Multer.File,
+      @Body() body: any
+    ) {
+      // Teruskan body dan file ke service
+      return this.coursesService.createSubject(body, file);
     }
 
     // 2. Get All Subjects

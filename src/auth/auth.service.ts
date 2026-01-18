@@ -1,3 +1,4 @@
+// src/auth/auth.service.ts
 import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
@@ -17,8 +18,8 @@ export class AuthService {
       data: {
         email: data.email,
         username: data.username,
-        password_hash: hashedPassword,
-        user_role_id: 1, // Pastikan role ID 1 ada
+        passwordHash: hashedPassword, // camelCase
+        userRoleId: 1, // camelCase
         status: 'active',
       },
     });
@@ -27,7 +28,9 @@ export class AuthService {
   // LOGIN MANUAL
   async validateUser(email: string, pass: string) {
     const user = await this.prisma.users.findUnique({ where: { email } });
-    if (user && (await bcrypt.compare(pass, user.password_hash))) {
+    
+    // Pastikan menggunakan user.passwordHash (camelCase)
+    if (user && (await bcrypt.compare(pass, user.passwordHash))) {
       return this.generateToken(user);
     }
     throw new UnauthorizedException('Email atau password salah');
@@ -36,20 +39,25 @@ export class AuthService {
   // LOGIN GOOGLE (Otomatis daftar kalau belum ada)
   async validateGoogleUser(googleUser: any) {
     let user = await this.prisma.users.findFirst({
-      where: { OR: [{ google_id: googleUser.google_id }, { email: googleUser.email }] }
+      where: { 
+        OR: [
+          { googleId: googleUser.googleId }, // camelCase
+          { email: googleUser.email }
+        ] 
+      }
     });
 
     if (!user) {
       user = await this.prisma.users.create({
         data: {
           email: googleUser.email,
-          google_id: googleUser.google_id,
+          googleId: googleUser.googleId, // camelCase
           username: googleUser.email.split('@')[0] + Math.floor(Math.random() * 1000),
-          password_hash: '', 
-          first_name: googleUser.firstName,
-          last_name: googleUser.lastName,
-          profile_picture_url: googleUser.picture,
-          user_role_id: 1,
+          passwordHash: '', // camelCase
+          firstName: googleUser.firstName, // camelCase
+          lastName: googleUser.lastName, // camelCase
+          profilePictureUrl: googleUser.picture, // camelCase
+          userRoleId: 1, // camelCase
           status: 'active',
         },
       });
@@ -58,10 +66,15 @@ export class AuthService {
   }
 
   async generateToken(user: any) {
-    const payload = { sub: user.id, email: user.email, role: user.user_role_id };
+    // Gunakan user.userRoleId (camelCase)
+    const payload = { sub: user.id, email: user.email, role: user.userRoleId };
     return {
-      access_token: this.jwtService.sign(payload),
-      user: { id: user.id, username: user.username, role: user.user_role_id }
+      accessToken: this.jwtService.sign(payload),
+      user: { 
+        id: user.id, 
+        username: user.username, 
+        role: user.userRoleId 
+      }
     };
   }
 }

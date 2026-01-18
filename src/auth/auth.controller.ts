@@ -25,7 +25,7 @@ export class AuthController {
   async googleAuthRedirect(@Req() req, @Res() res) {
     const result = await this.authService.validateGoogleUser(req.user);
     // Setelah login Google, kirim token ke frontend Next.js
-    return res.redirect(`http://localhost:3000/auth-success?token=${result.access_token}`);
+    return res.redirect(`http://localhost:3000/auth-success?token=${result.accessToken}`);
   }
   @Get('me')
   @UseGuards(AuthGuard('jwt')) // <--- Ini pelindungnya

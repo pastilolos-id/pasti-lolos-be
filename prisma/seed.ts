@@ -1,10 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 async function main() {
-  await prisma.user_roles.upsert({
+  await prisma.userRoles.upsert({
     where: { id: 1 },
     update: {},
-    create: { id: 1, role_name: 'USER', is_active: true },
+    create: { id: 1, roleName: 'USER', isActive: true },
   });
 }
 main().then(() => console.log('Seed berhasil'));
