@@ -19,7 +19,7 @@ export class AuthService {
         email: data.email,
         username: data.username,
         passwordHash: hashedPassword, // camelCase
-        userRoleId: 1, // camelCase
+        userRoleId: 4, // camelCase
         status: 'active',
       },
     });
@@ -57,7 +57,7 @@ export class AuthService {
           firstName: googleUser.firstName, // camelCase
           lastName: googleUser.lastName, // camelCase
           profilePictureUrl: googleUser.picture, // camelCase
-          userRoleId: 1, // camelCase
+          userRoleId: 4, // camelCase
           status: 'active',
         },
       });

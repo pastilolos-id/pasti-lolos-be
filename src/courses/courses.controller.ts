@@ -15,8 +15,14 @@ export class CoursesController {
   // 1. Create Course
   @Post()
   @UseGuards(AuthGuard('jwt')) 
-  create(@Body() body: any, @Req() req) {
-    return this.coursesService.createCourse(body, req.user.userId);
+  @UseInterceptors(FileInterceptor('file')) // Untuk thumbnail course
+  async create(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: any, 
+    @Req() req: any
+  ) {
+    // Kita kirim body, file, dan userId (dari JWT)
+    return this.coursesService.createCourse(body, file, req.user.userId);
   }
 
   // 2. Get All Courses
@@ -36,20 +42,25 @@ export class CoursesController {
   // 4. Create Module (Bab)
   @Post('module')
   @UseGuards(AuthGuard('jwt')) 
-  createModule(@Body() body: any) {
+  @UseInterceptors(FileInterceptor('file'))
+  createModule(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: any,
+    @Req() req: any
+  ){
     return this.coursesService.createModule(body);
   }
 
   // 5. Create Lesson (Materi/Video/Teks)
   @Post('lesson')
   @UseGuards(AuthGuard('jwt')) 
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file')) // File utama (Video/PDF)
   async createLesson(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: any,
     @Req() req: any
-  ){
-    return this.coursesService.createLesson(body);
+  ) {
+    return this.coursesService.createLesson(body, file, req.user.userId);
   }
 
     // 1. Create Subject

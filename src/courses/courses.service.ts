@@ -10,11 +10,37 @@ export class CoursesService {
     private cloudinary: CloudinaryService) {}
 
   // --- CRUD COURSES ---
-  async createCourse(data: any, userId: number) {
+  async createCourse(data: any, file: Express.Multer.File, userId: number) {
+    let thumbnailUri = data.course_image_url; // Default jika tidak upload
+
+    // 1. Upload Thumbnail ke Cloudinary jika ada
+    if (file) {
+      const upload = await this.cloudinary.uploadFile(file, 'course_thumbnails');
+      thumbnailUri = upload.secure_url;
+    }
+
+    // 2. Simpan ke Database
     return this.prisma.courses.create({
       data: {
-        ...data,
-        createdByUserId: userId, 
+        courseTitle: data.course_title,
+        description: data.course_description,
+        
+        // Relasi ke Subject (Wajib ada ID Subject yang valid)
+        subjectId: parseInt(data.subject_id),
+        
+        // Detail Kursus
+        price: parseFloat(data.price) || 0,
+        difficultyLevel: data.level || 'beginner', // beginner, intermediate, advanced
+        thumbnailUrl: thumbnailUri,
+        
+        // Audit
+        createdByUserId: userId,
+        status: data.status || 'active',
+
+        // Jika di schema lo ada metadata tambahan
+        metadataJson: typeof data.metadata_json === 'string' 
+          ? JSON.parse(data.metadata_json) 
+          : data.metadata_json,
       },
     });
   }
@@ -49,8 +75,60 @@ export class CoursesService {
   }
 
   // --- CRUD LESSONS (Materi di dalam Bab) ---
-  async createLesson(data: any) {
-    return this.prisma.lessons.create({ data }); 
+  async createLesson(data: any, file: Express.Multer.File, userId: number) {
+    let contentUrl = data.content_url;
+    let duration = data.duration_minutes ? parseInt(data.duration_minutes) : null;
+    let externalAssetId = null;
+
+    // 1. Jika ada file, upload ke Cloudinary
+    if (file) {
+      const upload = await this.cloudinary.uploadFile(file, 'lesson_contents');
+      contentUrl = upload.secure_url;
+      externalAssetId = upload.public_id; // Simpan ID Cloudinary
+
+      // Jika video, ambil durasi otomatis (Cloudinary mengembalikan detik, kita konversi ke menit)
+      if (upload.resource_type === 'video' && upload.duration) {
+        duration = Math.ceil(upload.duration / 60);
+      }
+    }
+
+    // Helper safe parse JSON
+    const safeParse = (val: any) => {
+      try { return typeof val === 'string' ? JSON.parse(val) : val; } catch { return val; }
+    };
+
+    // 2. Simpan ke Database
+    return this.prisma.lessons.create({
+      data: {
+        moduleId: parseInt(data.module_id),
+        lessonTitle: data.lesson_title,
+        lessonType: data.lesson_type, // 'video', 'text', 'quiz', dll
+        
+        contentUrl: contentUrl,
+        contentText: data.content_text,
+        
+        durationMinutes: duration,
+        orderInModule: parseInt(data.order_in_module) || 1,
+        
+        isPreview: data.is_preview === 'true' || data.is_preview === true,
+        status: data.status || 'draft',
+        
+        // Resource & Links
+        attachmentsJson: safeParse(data.attachments_json),
+        resourceLinksJson: safeParse(data.resource_links_json),
+        
+        // Additional Info
+        notesForLesson: data.notes_for_lesson,
+        estimatedReadingTimeMinutes: data.estimated_reading_time_minutes ? parseInt(data.estimated_reading_time_minutes) : null,
+        transcriptionText: data.transcription_text,
+        
+        // Metadata & Audit
+        externalAssetId: externalAssetId,
+        lastUpdatedBy: userId,
+        metadataJson: safeParse(data.metadata_json),
+        internalComments: data.internal_comments,
+      },
+    });
   }
 
   async findLesson(id: number) {
