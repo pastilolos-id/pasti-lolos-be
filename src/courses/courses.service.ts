@@ -59,14 +59,32 @@ export class CoursesService {
       where: { id },
       include: {
         modules: {
+          orderBy: { moduleOrder: 'asc' },
           include: {
-            lessons: true, 
+            lessons: {
+              orderBy: { orderInModule: 'asc' },
+            },
           },
         },
       },
     });
+
     if (!course) throw new NotFoundException('Course tidak ditemukan');
-    return course;
+
+    // Logic Fitur 2: Kalkulasi Statistik
+    const allLessons = course.modules.flatMap(m => m.lessons);
+    const totalLessons = allLessons.length;
+    const totalDuration = allLessons.reduce((acc, curr) => acc + (curr.durationMinutes || 0), 0);
+
+    return {
+      ...course,
+      statistics: {
+        totalModules: course.modules.length,
+        totalLessons: totalLessons,
+        totalDurationFormatted: `${Math.floor(totalDuration / 60)}j ${totalDuration % 60}m`,
+        totalDurationMinutes: totalDuration
+      }
+    };
   }
 
   // --- CRUD MODULES (Bab) ---
@@ -127,6 +145,57 @@ export class CoursesService {
         lastUpdatedBy: userId,
         metadataJson: safeParse(data.metadata_json),
         internalComments: data.internal_comments,
+      },
+    });
+  }
+
+
+  async updateLesson(id: number, data: any, file: Express.Multer.File, userId: number) {
+    // 1. Cari data lesson lama
+    const oldLesson = await this.prisma.lessons.findUnique({ where: { id } });
+    if (!oldLesson) throw new NotFoundException('Lesson tidak ditemukan');
+
+    let contentUrl = oldLesson.contentUrl;
+    let externalAssetId = oldLesson.externalAssetId;
+    let duration = oldLesson.durationMinutes;
+
+    // 2. Jika ada file baru yang diupload
+    if (file) {
+      // Hapus file lama di Cloudinary jika ada public_id-nya
+      if (oldLesson.externalAssetId) {
+        await this.cloudinary.deleteFile(oldLesson.externalAssetId);
+      }
+
+      // Upload file baru
+      const upload = await this.cloudinary.uploadFile(file, 'lesson_materials');
+      contentUrl = upload.secure_url;
+      externalAssetId = upload.public_id;
+
+      if (upload.resource_type === 'video' && upload.duration) {
+        duration = Math.ceil(upload.duration / 60);
+      }
+    }
+
+    const safeParse = (val: any) => {
+      try { return typeof val === 'string' ? JSON.parse(val) : val; } catch { return val; }
+    };
+
+    // 3. Update Database
+    return this.prisma.lessons.update({
+      where: { id },
+      data: {
+        lessonTitle: data.lesson_title,
+        lessonType: data.lesson_type,
+        contentUrl: contentUrl,
+        contentText: data.content_text,
+        durationMinutes: duration,
+        orderInModule: data.order_in_module ? parseInt(data.order_in_module) : undefined,
+        isPreview: data.is_preview === 'true' || data.is_preview === true,
+        status: data.status,
+        attachmentsJson: safeParse(data.attachments_json),
+        resourceLinksJson: safeParse(data.resource_links_json),
+        externalAssetId: externalAssetId,
+        lastUpdatedBy: userId,
       },
     });
   }
@@ -321,4 +390,28 @@ export class CoursesService {
       }
     });
   }
+
+  async getSyllabus(courseId: number) {
+    return this.prisma.courses.findUnique({
+      where: { id: courseId },
+      include: {
+        modules: {
+          orderBy: { moduleOrder: 'asc' }, // Biar urut Bab 1, 2, 3
+          include: {
+            lessons: {
+              orderBy: { orderInModule: 'asc' }, // Biar urut materi 1, 2, 3
+              select: {
+                id: true,
+                lessonTitle: true,
+                lessonType: true,
+                durationMinutes: true,
+                isPreview: true, // Penting buat tau mana yang bisa ditonton gratis
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
 }

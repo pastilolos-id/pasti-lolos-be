@@ -37,6 +37,16 @@ async uploadFile(
   });
 }
 
+// src/common/cloudinary/cloudinary.service.ts
+
+async deleteFile(publicId: string) {
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.destroy(publicId, (error, result) => {
+      if (error) return reject(error);
+      resolve(result);
+    });
+  });
+}
 //   async uploadFile(file: Express.Multer.File, folder: string = 'learning-assets') {
 //     return new Promise((resolve, reject) => {
 //       const uploadStream = cloudinary.uploader.upload_stream(
