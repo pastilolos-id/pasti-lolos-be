@@ -1,5 +1,11 @@
 // src/dashboard/dashboard.controller.ts
-import { Controller, Get, UseGuards, Req, NotFoundException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  UseGuards,
+  Req,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -16,11 +22,11 @@ export class DashboardController {
     // 1. Ambil info user
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      select: { 
-        username: true, 
-        firstName: true, 
-        profilePictureUrl: true 
-      }
+      select: {
+        username: true,
+        firstName: true,
+        profilePictureUrl: true,
+      },
     });
 
     // Proteksi: Jika user tidak ada di database, hentikan proses
@@ -30,15 +36,15 @@ export class DashboardController {
 
     // 2. Ambil jumlah kursus yang diikuti
     const enrolledCourses = await this.prisma.userCourses.count({
-      where: { userId: userId }
+      where: { userId: userId },
     });
 
     // 3. (Opsional) Ambil jumlah ujian yang selesai (contoh query)
     const completedExams = await this.prisma.userExams.count({
-      where: { 
+      where: {
         userId: userId,
-        status: 'completed' // Sesuaikan dengan field di database Anda
-      }
+        status: 'completed', // Sesuaikan dengan field di database Anda
+      },
     });
 
     // Nama yang akan ditampilkan (prioritas first_name, lalu username)
@@ -53,7 +59,7 @@ export class DashboardController {
       stats: {
         enrolledCourses,
         completedExams,
-      }
+      },
     };
   }
 }
