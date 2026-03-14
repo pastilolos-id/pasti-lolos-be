@@ -12,6 +12,7 @@ import {
   UploadedFile,
   BadRequestException,
   UploadedFiles,
+  Delete,
 } from '@nestjs/common';
 import {
   FileFieldsInterceptor,
@@ -63,24 +64,44 @@ export class CoursesController {
   @Patch(':id')
   @UseInterceptors(
     FileFieldsInterceptor([
-      { name: 'file', maxCount: 1 },
-      { name: 'video', maxCount: 1 },
+      { name: 'file', maxCount: 1 }, // Untuk Thumbnail
+      { name: 'video', maxCount: 1 }, // Untuk Video Perkenalan
     ]),
   )
   async update(
     @Param('id') id: string,
-    @UploadedFiles() files: CourseFiles,
+    @UploadedFiles()
+    files: { file?: Express.Multer.File[]; video?: Express.Multer.File[] },
     @Body() updateCourseDto: UpdateCourseDto,
   ) {
-    // Parse ID string ke number
     const courseId = parseInt(id, 10);
-    if (isNaN(courseId)) throw new BadRequestException('ID Course tidak valid');
+    if (isNaN(courseId)) {
+      throw new BadRequestException('ID Course harus berupa angka');
+    }
 
+    // Pastikan urutan argumen sesuai dengan Service: (id, data, files)
     return await this.coursesService.updateCourse(
       courseId,
       updateCourseDto,
       files,
     );
+  }
+
+  @Delete(':id')
+  async remove(
+    @Param('id') id: string,
+    @Req() req: RequestWithUser, // Menggunakan interface yang kita bahas tadi
+  ) {
+    const courseId = parseInt(id, 10);
+    if (isNaN(courseId)) {
+      throw new BadRequestException('ID Course tidak valid');
+    }
+
+    await this.coursesService.softDeleteCourse(courseId, req.user.userId);
+    return {
+      success: true,
+      message: `Course dengan ID ${id} berhasil dipindahkan ke tempat sampah (soft delete).`,
+    };
   }
 
   @Get()

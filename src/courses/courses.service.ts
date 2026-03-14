@@ -117,26 +117,51 @@ export class CoursesService {
     return this.prisma.courses.update({
       where: { id },
       data: {
-        courseTitle: data.course_title,
+        courseTitle: data.courseTitle, // Pastikan field name di Prisma adalah courseTitle
         description: data.description,
         thumbnailUrl: thumbnailUrl,
         introductionVideoUrl: videoUrl,
         status: data.status,
-        difficultyLevel: data.difficulty_level,
-        // Konversi ID ke Number jika dikirim
-        subjectId: data.subject_id ? parseInt(data.subject_id, 10) : undefined,
-        topicId: data.topic_id ? parseInt(data.topic_id, 10) : undefined,
+        difficultyLevel: data.difficultyLevel,
+        subjectId: data.subjectId ? parseInt(data.subjectId, 10) : undefined,
+        topicId: data.topicId ? parseInt(data.topicId, 10) : undefined,
         price: data.price ? new Prisma.Decimal(data.price) : undefined,
-        // Metadata update
-        metadataJson: data.instructor_id
-          ? ({ instructorId: data.instructor_id } as Prisma.JsonObject)
+        // Update metadata secara aman
+        metadataJson: data.instructorId
+          ? {
+              ...(oldCourse.metadataJson as object),
+              instructorId: data.instructorId,
+            }
           : undefined,
+      },
+    });
+  }
+
+  async softDeleteCourse(id: number, userId: number) {
+    // 1. Cek apakah course ada
+    const course = await this.prisma.courses.findUnique({ where: { id } });
+    if (!course) throw new NotFoundException('Course tidak ditemukan');
+
+    // 2. Update status jadi deleted
+    return await this.prisma.courses.update({
+      where: { id },
+      data: {
+        status: 'deleted',
+        // Opsional: catat siapa yang menghapus di metadata
+        metadataJson: {
+          ...(course.metadataJson as object),
+          deletedAt: new Date(),
+          deletedBy: userId,
+        },
       },
     });
   }
 
   async findAllCourses() {
     return this.prisma.courses.findMany({
+      where: {
+        status: { not: 'deleted' }, // <--- WAJIB TAMBAHKAN INI
+      },
       include: {
         modules: true,
         _count: { select: { modules: true } },
