@@ -21,22 +21,27 @@ import { CreateExamDto } from './dto/create-exam.dto';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { CreateAnswerDto } from './dto/create-answer.dto';
 import { AddQuestionToExamDto } from './dto/add-question-to-exam.dto';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorators';
 
 // Interface untuk Type-Safety Request
 interface RequestWithUser extends Request {
   user: {
     userId: number;
+    email: string;
+    roles: string[];
   };
 }
 
 @Controller('exams')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 export class ExamsController {
   prisma: any;
   constructor(private readonly examsService: ExamsService) {}
 
   // --- CRUD EXAMS ---
   @Post()
+  @Roles('admin', 'kontributor')
   createExam(@Body() body: CreateExamDto, @Req() req: RequestWithUser) {
     return this.examsService.createExam(body, req.user.userId);
   }
@@ -52,6 +57,7 @@ export class ExamsController {
 
   // --- QUESTIONS & ANSWERS ---
   @Post('questions')
+  @Roles('admin', 'kontributor')
   createQuestion(@Body() body: CreateQuestionDto, @Req() req: RequestWithUser) {
     return this.examsService.createQuestion(body, req.user.userId);
   }
@@ -68,11 +74,13 @@ export class ExamsController {
 
   // --- MEKANISME UJIAN (Attempts) ---
   @Post('start/:examId')
+  @Roles('murid')
   start(@Param('examId') examId: string, @Req() req: RequestWithUser) {
     return this.examsService.startExam(+examId, req.user.userId);
   }
 
   @Post('submit-answer')
+  @Roles('murid')
   submit(
     @Body() body: { userExamId: number; questionId: number; answerId: number },
     @Req() req: RequestWithUser,
@@ -87,6 +95,7 @@ export class ExamsController {
   }
 
   @Post('finish/:userExamId')
+  @Roles('murid')
   finish(@Param('userExamId') userExamId: string, @Req() req: RequestWithUser) {
     return this.examsService.finishExam(+userExamId, req.user.userId);
   }

@@ -5,9 +5,11 @@ import { Request } from 'express';
 
 // Interface untuk payload JWT agar tidak 'any'
 interface JwtPayload {
-  sub: number;
+  sub: number; // userId
   email: string;
-  role: number;
+  role: string[]; // Array string karena di DB lo pake junction user_role
+  iat?: number;
+  exp?: number;
 }
 
 @Injectable()
