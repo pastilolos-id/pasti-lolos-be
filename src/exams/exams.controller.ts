@@ -10,90 +10,116 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  // Patch,
+  // Delete,
 } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Request } from 'express';
+import { CreateExamDto } from './dto/create-exam.dto';
+import { CreateQuestionDto } from './dto/create-question.dto';
+import { CreateAnswerDto } from './dto/create-answer.dto';
+import { AddQuestionToExamDto } from './dto/add-question-to-exam.dto';
+
+// Interface untuk Type-Safety Request
+interface RequestWithUser extends Request {
+  user: {
+    userId: number;
+  };
+}
 
 @Controller('exams')
 @UseGuards(AuthGuard('jwt'))
 export class ExamsController {
+  prisma: any;
   constructor(private readonly examsService: ExamsService) {}
 
+  // --- CRUD EXAMS ---
   @Post()
-  createExam(@Body() body: any, @Req() req) {
+  createExam(@Body() body: CreateExamDto, @Req() req: RequestWithUser) {
     return this.examsService.createExam(body, req.user.userId);
-  }
-  @Post('answers')
-  createAnswer(@Body() body: any, @Req() req) {
-    return this.examsService.createAnswer(body, req.user.userId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.examsService.findOneExam(+id);
+  findOne(
+    @Param('id') id: string,
+    @Req() req: RequestWithUser, // Gunakan interface yang tadi sudah lo buat
+  ) {
+    // Masukkan argumen kedua yaitu userId dari request
+    return this.examsService.findOneExam(+id, req.user.userId);
   }
 
-  // @Post('questions')
-  // createQuestion(@Body() body: any, @Req() req) {
-  //   return this.examsService.createQuestion(body, req.user.userId);
-  // }
+  // --- QUESTIONS & ANSWERS ---
   @Post('questions')
-  createQuestion(@Body() body: any, @Req() req) {
+  createQuestion(@Body() body: CreateQuestionDto, @Req() req: RequestWithUser) {
     return this.examsService.createQuestion(body, req.user.userId);
   }
 
-  // Endpoint baru untuk menghubungkan soal ke exam
+  @Post('answers')
+  createAnswer(@Body() body: CreateAnswerDto, @Req() req: RequestWithUser) {
+    return this.examsService.createAnswer(body, req.user.userId);
+  }
+
   @Post('add-question')
-  addQuestionToExam(@Body() body: any) {
+  addQuestionToExam(@Body() body: AddQuestionToExamDto) {
     return this.examsService.addQuestionToExam(body);
   }
 
+  // --- MEKANISME UJIAN (Attempts) ---
   @Post('start/:examId')
-  start(@Param('examId') examId: string, @Req() req) {
+  start(@Param('examId') examId: string, @Req() req: RequestWithUser) {
     return this.examsService.startExam(+examId, req.user.userId);
   }
 
   @Post('submit-answer')
   submit(
     @Body() body: { userExamId: number; questionId: number; answerId: number },
+    @Req() req: RequestWithUser,
   ) {
+    // Kita tambahin req.user.userId buat validasi kepemilikan sesi di service
     return this.examsService.submitAnswer(
       body.userExamId,
       body.questionId,
       body.answerId,
+      req.user.userId,
     );
   }
 
   @Post('finish/:userExamId')
-  finish(@Param('userExamId') userExamId: string) {
-    return this.examsService.finishExam(+userExamId);
+  finish(@Param('userExamId') userExamId: string, @Req() req: RequestWithUser) {
+    return this.examsService.finishExam(+userExamId, req.user.userId);
   }
 
-  //Checkout exam
-  // 1. Preview sebelum bayar
+  // --- CHECKOUT EXAM ---
   @Get('checkout-preview/:examId')
   async getPreview(@Param('examId') examId: string) {
     return this.examsService.getExamCheckoutPreview(+examId);
   }
 
-  // 2. Eksekusi bayar (Upload bukti)
   @Post('checkout')
   @UseInterceptors(FileInterceptor('file'))
   async checkout(
-    @Body('exam_id') examId: string,
-    @Body('payment_method') paymentMethod: string,
     @UploadedFile() file: Express.Multer.File,
-    @Req() req: any,
+    @Body()
+    body: { examId: string; paymentMethod: string; discountCode?: string },
+    @Req() req: RequestWithUser,
   ) {
-    if (!file)
-      throw new BadRequestException('Bukti pembayaran wajib dilampirkan');
+    if (!file) throw new BadRequestException('Bukti pembayaran wajib diunggah');
 
     return this.examsService.processExamCheckout(
-      +examId,
+      +body.examId,
       req.user.userId,
-      paymentMethod,
+      body.paymentMethod,
       file,
+      body.discountCode,
     );
+  }
+  @Get('remaining-time/:userExamId')
+  async getRemainingTime(
+    @Param('userExamId') id: string,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.examsService.getRemainingTime(+id, req.user.userId);
   }
 }

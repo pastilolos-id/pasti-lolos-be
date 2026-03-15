@@ -436,6 +436,43 @@ export class CoursesService {
     }
   }
 
+  // --- UPDATE MODULE ---
+  async updateModule(
+    id: number,
+    data: Partial<CreateModuleDto>,
+    userId: number,
+  ) {
+    const module = await this.prisma.modules.findUnique({ where: { id } });
+    if (!module) throw new NotFoundException('Modul tidak ditemukan');
+
+    return this.prisma.modules.update({
+      where: { id },
+      data: {
+        moduleTitle: data.moduleTitle,
+        moduleOrder: data.moduleOrder
+          ? parseInt(data.moduleOrder, 10)
+          : undefined,
+        description: data.description,
+        status: data.status,
+        lastModifiedBy: userId,
+      },
+    });
+  }
+
+  // --- SOFT DELETE MODULE ---
+  async softDeleteModule(id: number, userId: number) {
+    const module = await this.prisma.modules.findUnique({ where: { id } });
+    if (!module) throw new NotFoundException('Modul tidak ditemukan');
+
+    return this.prisma.modules.update({
+      where: { id },
+      data: {
+        status: 'deleted',
+        lastModifiedBy: userId,
+      },
+    });
+  }
+
   // --- CRUD LESSONS (Materi di dalam Bab) ---
   async createLesson(
     data: CreateLessonDto,
@@ -566,6 +603,31 @@ export class CoursesService {
         externalAssetId: externalAssetId,
         lastUpdatedBy: userId,
       },
+    });
+  }
+
+  // --- SOFT DELETE LESSON ---
+  async softDeleteLesson(id: number, userId: number) {
+    const lesson = await this.prisma.lessons.findUnique({ where: { id } });
+    if (!lesson) throw new NotFoundException('Materi tidak ditemukan');
+
+    return this.prisma.lessons.update({
+      where: { id },
+      data: {
+        status: 'deleted',
+        lastUpdatedBy: userId,
+      },
+    });
+  }
+
+  // --- GET LESSONS BY MODULE (Filter Deleted) ---
+  async findAllLessonsByModule(moduleId: number) {
+    return this.prisma.lessons.findMany({
+      where: {
+        moduleId,
+        status: { not: 'deleted' }, // Jangan tampilkan yang sudah dihapus
+      },
+      orderBy: { orderInModule: 'asc' },
     });
   }
 

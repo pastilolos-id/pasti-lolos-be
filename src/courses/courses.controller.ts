@@ -209,4 +209,14 @@ export class CoursesController {
       checkoutDto.discountCode,
     );
   }
+
+  @Delete('modules/:id')
+  async removeModule(@Param('id') id: string, @Req() req: RequestWithUser) {
+    return this.coursesService.softDeleteModule(+id, req.user.userId);
+  }
+
+  @Delete('lessons/:id')
+  async removeLesson(@Param('id') id: string, @Req() req: RequestWithUser) {
+    return this.coursesService.softDeleteLesson(+id, req.user.userId);
+  }
 }
