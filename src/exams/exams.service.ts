@@ -253,32 +253,40 @@ export class ExamsService {
 
   // --- Mekanisme Ujian (User Exam Attempt) ---
   async startExam(examId: number, userId: number) {
-    // 1. Cek akses (Sudah bayar/belum)
-    const hasAccess = await this.prisma.orders.findFirst({
-      where: {
-        userId,
-        orderStatus: 'completed',
-        orderItems: { some: { itemId: examId, itemType: 'exam' } },
-      },
-    });
-    if (!hasAccess)
-      throw new ForbiddenException('Beli dulu paket ujiannya, Bang.');
+    // Gunakan transaction untuk memastikan pengecekan kuota aman dari race condition
+    return this.prisma.$transaction(async (tx) => {
+      const hasAccess = await tx.orders.findFirst({
+        where: {
+          userId,
+          orderStatus: 'completed',
+          orderItems: { some: { itemId: examId, itemType: 'exam' } },
+        },
+      });
+      if (!hasAccess)
+        throw new ForbiddenException('Beli dulu paket ujiannya, Bang.');
 
-    // 2. Cek kuota attempt
-    const exam = await this.prisma.exams.findUnique({ where: { id: examId } });
-    const count = await this.prisma.userExams.count({
-      where: { examId, userId },
-    });
-    if (count >= (exam?.attemptsAllowed || 1))
-      throw new BadRequestException('Jatah ujian habis.');
+      const exam = await tx.exams.findUnique({ where: { id: examId } });
+      // Cek apakah ada ujian yang sedang 'in_progress', kalau ada balikkan yang itu saja
+      const existingAttempt = await tx.userExams.findFirst({
+        where: { examId, userId, status: 'in_progress' },
+      });
+      if (existingAttempt) return existingAttempt;
 
-    return this.prisma.userExams.create({
-      data: {
-        examId,
-        userId,
-        startTime: new Date(),
-        status: 'in_progress',
-      },
+      const count = await tx.userExams.count({
+        where: { examId, userId, status: 'submitted' },
+      });
+
+      if (count >= (exam?.attemptsAllowed || 1))
+        throw new BadRequestException('Jatah ujian sudah habis.');
+
+      return tx.userExams.create({
+        data: {
+          examId,
+          userId,
+          startTime: new Date(),
+          status: 'in_progress',
+        },
+      });
     });
   }
 
@@ -359,6 +367,11 @@ export class ExamsService {
       );
       return isCorrect ? acc + point : acc;
     }, 0);
+    const endTime = new Date();
+    // Hitung selisih dalam menit
+    const timeTakenMinutes = Math.floor(
+      (endTime.getTime() - attempt.startTime.getTime()) / 60000,
+    );
 
     return this.prisma.userExams.update({
       where: { id: userExamId },
@@ -368,6 +381,10 @@ export class ExamsService {
         score: totalScore,
         isCompleted: true,
         status: 'submitted',
+        metadataJson: {
+          ...((attempt.metadataJson as object) || {}),
+          timeTakenMinutes: timeTakenMinutes,
+        } as Prisma.InputJsonValue,
       },
     });
   }

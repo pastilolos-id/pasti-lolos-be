@@ -10,6 +10,9 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
   // Patch,
   // Delete,
 } from '@nestjs/common';
@@ -36,7 +39,7 @@ interface RequestWithUser extends Request {
 @Controller('exams')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class ExamsController {
-  prisma: any;
+  // prisma: any;
   constructor(private readonly examsService: ExamsService) {}
 
   // --- CRUD EXAMS ---
@@ -109,7 +112,15 @@ export class ExamsController {
   @Post('checkout')
   @UseInterceptors(FileInterceptor('file'))
   async checkout(
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }), // 2MB
+          new FileTypeValidator({ fileType: '.(png|jpeg|jpg)' }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
     @Body()
     body: { examId: string; paymentMethod: string; discountCode?: string },
     @Req() req: RequestWithUser,
