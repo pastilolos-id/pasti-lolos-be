@@ -7,8 +7,8 @@ import {
 } from 'class-validator';
 
 export class CreateTopicDto {
-  @IsNotEmpty() @IsNumber() subjectId: number;
-  @IsNotEmpty() @IsString() topicName: string;
+  @IsNotEmpty() @IsNumber() subjectId!: number;
+  @IsNotEmpty() @IsString() topicName!: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsNumberString() averageScore?: string;
   @IsOptional() @IsNumberString() quizAverageScore?: string;

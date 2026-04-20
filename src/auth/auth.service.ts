@@ -16,12 +16,14 @@ interface GoogleUserPayload {
   lastName: string;
   picture?: string; // Tanda tanya (?) berarti opsional
 }
-interface UserFromDb {
-  id: number;
-  email: string;
-  username: string;
-  userRoleId: number;
-  // tambahkan field lain jika perlu
+interface AuthResult {
+  accessToken: string;
+  user: {
+    id: number;
+    email: string;
+    username: string;
+    userRoleId: number;
+  };
 }
 
 @Injectable()
@@ -61,25 +63,30 @@ export class AuthService {
         lastName: lastName,
         phoneNumber: data.phoneNumber,
         isAgreed: data.isAgreed,
-        userRoleId: 4,
+        userRoleId: 1,
         status: 'active',
       },
     });
   }
 
   // LOGIN MANUAL
-  async validateUser(email: string, pass: string) {
+  async validateUser(email: string, pass: string): Promise<AuthResult> {
     const user = await this.prisma.users.findUnique({ where: { email } });
 
     // Pastikan menggunakan user.passwordHash (camelCase)
     if (user && (await bcrypt.compare(pass, user.passwordHash))) {
-      return this.generateToken(user);
+      return this.generateToken({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        userRoleId: user.userRoleId,
+      });
     }
     throw new UnauthorizedException('Email atau password salah');
   }
 
   // LOGIN GOOGLE (Otomatis daftar kalau belum ada)
-  async validateGoogleUser(googleUser: GoogleUserPayload) {
+  async validateGoogleUser(googleUser: GoogleUserPayload): Promise<AuthResult> {
     let user = await this.prisma.users.findFirst({
       where: {
         OR: [{ googleId: googleUser.googleId }, { email: googleUser.email }],
@@ -97,27 +104,39 @@ export class AuthService {
           firstName: googleUser.firstName,
           lastName: googleUser.lastName,
           profilePictureUrl: googleUser.picture || null, // Handle jika foto tidak ada
-          userRoleId: 4,
+          userRoleId: 1,
           status: 'active',
         },
       });
     }
-    return this.generateToken(user);
+    return this.generateToken({
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      userRoleId: user.userRoleId,
+    });
   }
 
-  generateToken(user: UserFromDb) {
+  generateToken(user: {
+    id: number;
+    email: string;
+    username: string;
+    userRoleId: number;
+  }): AuthResult {
     const payload = {
-      sub: user.id,
-      email: user.email,
-      role: user.userRoleId,
-    };
+        userId: user.id, // Tambahkan ini agar req.user.userId tidak undefined
+        sub: user.id,
+        email: user.email,
+        roles: [user.userRoleId.toString()], // BERUBAH KE JAMAK DAN STRING ARRAY
+      };
 
     return {
       accessToken: this.jwtService.sign(payload),
       user: {
         id: user.id,
+        email: user.email,
         username: user.username,
-        role: user.userRoleId,
+        userRoleId: user.userRoleId,
       },
     };
   }

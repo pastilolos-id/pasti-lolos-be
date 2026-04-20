@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export enum PaymentStatus {
   COMPLETED = 'completed',
@@ -8,5 +8,9 @@ export enum PaymentStatus {
 export class VerifyPaymentDto {
   @IsNotEmpty({ message: 'Status tidak boleh kosong' })
   @IsEnum(PaymentStatus, { message: 'Status harus completed atau failed' })
-  status: PaymentStatus;
+  status!: PaymentStatus;
+
+  @IsOptional()
+  @IsString()
+  rejectionReason?: string; // Alasan jika status 'failed'
 }

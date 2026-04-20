@@ -14,15 +14,15 @@ export interface LessonFiles {
 export class CreateLessonDto {
   @IsNotEmpty()
   @IsNumberString()
-  module_id: string;
+  module_id!: string;
 
   @IsNotEmpty()
   @IsString()
-  lesson_title: string;
+  lesson_title!: string;
 
   @IsNotEmpty()
   @IsString()
-  lesson_type: 'video' | 'text' | 'file' | 'assignment';
+  lesson_type!: 'video' | 'text' | 'file' | 'assignment';
 
   @IsOptional()
   @IsString()

@@ -1,12 +1,10 @@
-// src/admin/admin.controller.ts
-import { Controller, Get, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Body, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { AuthGuard } from '@nestjs/passport';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
-// Import RolesGuard lo kalo ada
 
 @Controller('admin')
-@UseGuards(AuthGuard('jwt')) // Nanti tambahin RolesGuard khusus Admin di sini
+@UseGuards(AuthGuard('jwt')) 
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
@@ -17,9 +15,10 @@ export class AdminController {
 
   @Patch('payments/verify/:id')
   async verify(
-    @Param('id') id: string,
-    @Body() dto: VerifyPaymentDto, // Pakai DTO di sini
+    @Param('id', ParseIntPipe) id: number, // Pake ParseIntPipe biar otomatis jadi number
+    @Body() dto: VerifyPaymentDto,
   ) {
-    return this.adminService.verifyPayment(+id, dto.status);
+    // Kirim status dan reason ke service
+    return this.adminService.verifyPayment(id, dto.status, dto.rejectionReason);
   }
 }

@@ -8,15 +8,15 @@ import {
 export class CreateModuleDto {
   @IsNotEmpty()
   @IsNumberString()
-  courseId: string; // Ini ID Course induknya
+  courseId!: string; // Ini ID Course induknya
 
   @IsNotEmpty()
   @IsString()
-  moduleTitle: string; // Dari input "Nama Modul"
+  moduleTitle!: string; // Dari input "Nama Modul"
 
   @IsNotEmpty()
   @IsNumberString()
-  moduleOrder: string; // Dari input "Urutan Modul"
+  moduleOrder!: string; // Dari input "Urutan Modul"
 
   @IsOptional()
   @IsString()

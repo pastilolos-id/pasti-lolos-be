@@ -13,7 +13,7 @@ import { Match } from 'src/common/decorators/match.decorator';
 export class RegisterDto {
   @IsEmail({}, { message: 'Format email tidak valid' })
   @IsNotEmpty({ message: 'Email tidak boleh kosong' })
-  email: string;
+  email!: string;
 
   // @IsString()
   // @IsNotEmpty({ message: 'Username tidak boleh kosong' })
@@ -23,7 +23,7 @@ export class RegisterDto {
   @IsBoolean()
   @IsNotEmpty()
   @Equals(true, { message: 'Anda harus menyetujui syarat dan ketentuan' })
-  isAgreed: boolean;
+  isAgreed!: boolean;
 
   @IsString()
   @IsNotEmpty({ message: 'Nama lengkap tidak boleh kosong' })

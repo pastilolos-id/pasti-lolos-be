@@ -11,15 +11,15 @@ import {
 export class CreateQuestionDto {
   @IsNotEmpty()
   @IsString()
-  questionText: string;
+  questionText!: string;
 
   @IsNotEmpty()
   @IsEnum(['multiple_choice', 'essay', 'true_false', 'fill_in_the_blank'])
-  questionType: string;
+  questionType!: string;
 
   @IsNotEmpty()
   @IsNumberString()
-  subjectId: string;
+  subjectId!: string;
 
   @IsOptional()
   @IsNumberString()
@@ -38,6 +38,10 @@ export class CreateQuestionDto {
   explanationText?: string;
 
   @IsOptional()
+  @IsString()
+  internalNotes?: string;
+
+  @IsOptional()
   @IsNumberString()
   points?: string;
 
@@ -52,4 +56,12 @@ export class CreateQuestionDto {
   @IsOptional()
   @IsArray()
   tags?: string[];
+
+  @IsOptional()
+  @IsNumberString()
+  examId?: string; // ID Ujian yang mau dikoneksikan
+
+  @IsOptional()
+  @IsNumberString()
+  orderInExam?: string; // Urutan soal dalam ujian, kalau mau langsung masukin ke exam
 }

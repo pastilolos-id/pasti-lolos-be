@@ -13,13 +13,14 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
-  // Patch,
-  // Delete,
+  Patch,
+  Delete,
 } from '@nestjs/common';
 import { ExamsService } from './exams.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Request } from 'express';
+// import { Request } from 'express';
+import { Request as ExpressRequest } from 'express';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { CreateAnswerDto } from './dto/create-answer.dto';
@@ -43,13 +44,36 @@ export class ExamsController {
   constructor(private readonly examsService: ExamsService) {}
 
   // --- CRUD EXAMS ---
-  @Post()
-  @Roles('admin', 'kontributor')
+  @Post('create')
+  @Roles('3', '4') // 3 = admin, 4 = kontributor
   createExam(@Body() body: CreateExamDto, @Req() req: RequestWithUser) {
     return this.examsService.createExam(body, req.user.userId);
   }
 
-  @Get(':id')
+  @Patch('update/:id')
+  @Roles('3', '4') // Admin (3) & Kontributor (4)
+  update(
+    @Param('id') id: string,
+    @Body() body: Partial<CreateExamDto>,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.examsService.updateExam(+id, req.user.userId, body);
+  }
+
+  // Soft Delete Exam
+  @Delete('delete/:id')
+  @Roles('3') // Biasanya cuma Admin (3) yang boleh hapus
+  remove(@Param('id') id: string) {
+    return this.examsService.softDeleteExam(+id);
+  }
+
+  @Get('get-all')
+  @Roles('1', '3', '4') // Murid, Admin, Guru tetep bisa akses list ini
+  findAllPublished() {
+    return this.examsService.findAllPublished();
+  }
+
+  @Get('get/:id')
   findOne(
     @Param('id') id: string,
     @Req() req: RequestWithUser, // Gunakan interface yang tadi sudah lo buat
@@ -60,14 +84,22 @@ export class ExamsController {
 
   // --- QUESTIONS & ANSWERS ---
   @Post('questions')
-  @Roles('admin', 'kontributor')
+  @Roles('3', '4') // 3 = admin, 4 = kontributor
   createQuestion(@Body() body: CreateQuestionDto, @Req() req: RequestWithUser) {
+    // Fungsi ini sekarang menjalankan transaksi: simpan soal + konek ke exam
     return this.examsService.createQuestion(body, req.user.userId);
   }
 
   @Post('answers')
+  @Roles('3', '4') 
   createAnswer(@Body() body: CreateAnswerDto, @Req() req: RequestWithUser) {
     return this.examsService.createAnswer(body, req.user.userId);
+  }
+
+  @Get(':id/get-exams')
+  @Roles('1', '3', '4') 
+  async getFullDetails(@Param('id') id: string) {
+    return this.examsService.getExamWithQuestions(+id);
   }
 
   @Post('add-question')
@@ -77,13 +109,13 @@ export class ExamsController {
 
   // --- MEKANISME UJIAN (Attempts) ---
   @Post('start/:examId')
-  @Roles('murid')
+  @Roles('1') // 1 = murid, 2 = guru/kon
   start(@Param('examId') examId: string, @Req() req: RequestWithUser) {
     return this.examsService.startExam(+examId, req.user.userId);
   }
 
   @Post('submit-answer')
-  @Roles('murid')
+  @Roles('1')
   submit(
     @Body() body: { userExamId: number; questionId: number; answerId: number },
     @Req() req: RequestWithUser,
@@ -98,7 +130,7 @@ export class ExamsController {
   }
 
   @Post('finish/:userExamId')
-  @Roles('murid')
+  @Roles('1')
   finish(@Param('userExamId') userExamId: string, @Req() req: RequestWithUser) {
     return this.examsService.finishExam(+userExamId, req.user.userId);
   }
@@ -142,4 +174,38 @@ export class ExamsController {
   ) {
     return this.examsService.getRemainingTime(+id, req.user.userId);
   }
+
+  // Update urutan atau poin soal di dalam ujian
+  @Patch('questions-relation/:id')
+  async updateRelation(
+    @Param('id') id: string, 
+    @Body() data: any // <--- Bagian ini WAJIB ada
+  ) {
+    return this.examsService.updateExamQuestion(+id, data);
+  }
+
+  // Hapus soal dari ujian tertentu
+  @Delete(':examId/questions/:questionId')
+  async removeQuestion(
+    @Param('examId') examId: string,
+    @Param('questionId') questionId: string
+  ) {
+    return this.examsService.removeQuestionFromExam(+examId, +questionId);
+  }
+
+  // Ganti status ujian (Draft/Published/Archived)
+  @Patch(':id/status')
+  async changeStatus(@Param('id') id: string, @Body('status') status: string) {
+    return this.examsService.updateExamStatus(+id, status);
+  }
+
+  // Bulk Create
+  // @Post(':id/questions/bulk')
+  // async bulkCreate(
+  //   @Param('id') id: string,
+  //   @Body('questions') questions: any[],
+  //   @Request() req
+  // ) {
+  //   return this.examsService.bulkCreateQuestions(+id, req.user.id, questions);
+  // }
 }

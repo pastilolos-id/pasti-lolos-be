@@ -3,11 +3,11 @@ import { IsNotEmpty, IsNumberString, IsOptional } from 'class-validator';
 export class AddQuestionToExamDto {
   @IsNotEmpty()
   @IsNumberString()
-  examId: string;
+  examId!: string;
 
   @IsNotEmpty()
   @IsNumberString()
-  questionId: string;
+  questionId!: string;
 
   @IsOptional()
   @IsNumberString()

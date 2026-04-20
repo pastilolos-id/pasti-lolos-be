@@ -30,26 +30,33 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    // 2. Cast getRequest langsung ke interface kita
-    // Ini buat ngilangin "Unsafe assignment of an any value"
     const request = context.switchToHttp().getRequest<RequestWithUser>();
-    // 3. Ambil user dengan aman
     const user = request.user;
 
-    // 4. Cek keberadaan user dan roles secara eksplisit
+    // Cek field "roles" (pastikan di service sudah diganti ke "roles")
     if (!user || !user.roles) {
+      console.log('User object di Guard:', user); // Buat debug di terminal
       throw new ForbiddenException('Data role tidak ditemukan.');
     }
 
-    // 5. TypeScript sekarang tahu user.roles adalah string[]
-    const userRoles = Array.isArray(user.roles) ? user.roles : [];
+    // Mapping ID dari DB ke String Nama Role
+    // const roleMap: Record<string, string> = {
+    //   '1': 'murid',
+    //   '2': 'kontributor', // misal
+    //   '3': 'admin',
+    // };
 
-    const hasRole = requiredRoles.some((role: string) =>
-      userRoles.includes(role),
-    );
+    const userRoles = Array.isArray(user.roles) 
+      ? user.roles.map(String) 
+      : [String(user.roles)];
+
+    const hasRole = requiredRoles.some((role) => userRoles.includes(role));
 
     if (!hasRole) {
-      throw new ForbiddenException('Akses ditolak: Role Anda tidak diizinkan.');
+      throw new ForbiddenException(
+        `Akses ditolak.`,
+        // `Akses ditolak. Role Anda (${userRoles.join(', ')}) tidak diizinkan.`,
+      );
     }
 
     return true;

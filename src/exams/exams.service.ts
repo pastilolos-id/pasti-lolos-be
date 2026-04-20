@@ -80,10 +80,71 @@ export class ExamsService {
     });
   }
 
+  async updateExam(id: number, userId: number, data: Partial<CreateExamDto>) {
+    const exam = await this.prisma.exams.findUnique({ where: { id } });
+    
+    if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
+
+    // Update data dengan konversi tipe yang sesuai schema (Decimal & Int)
+    return this.prisma.exams.update({
+      where: { id },
+      data: {
+        examName: data.examName,
+        description: data.description,
+        durationMinutes: data.durationMinutes ? parseInt(data.durationMinutes, 10) : undefined,
+        examType: data.examType,
+        status: data.status, // Bisa buat ganti status manual
+        startTime: data.startTime ? new Date(data.startTime) : undefined,
+        endTime: data.endTime ? new Date(data.endTime) : undefined,
+        passingScore: data.passingScore ? new Prisma.Decimal(data.passingScore) : undefined,
+        price: data.price ? new Prisma.Decimal(data.price) : undefined,
+        attemptsAllowed: data.attemptsAllowed ? parseInt(data.attemptsAllowed, 10) : undefined,
+        randomizeQuestions: data.randomizeQuestions,
+        // Update metadata biar ketahuan siapa yang terakhir ngubah
+        metadataJson: {
+          ...(exam.metadataJson as object || {}),
+          lastUpdatedBy: userId,
+          updatedAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  // --- SOFT DELETE EXAM ---
+  async softDeleteExam(id: number) {
+    const exam = await this.prisma.exams.findUnique({ where: { id } });
+    if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
+
+    // Karena di tabel lo (kolom 12) ada kolom 'status', 
+    // kita set statusnya jadi 'archived' atau 'deleted' sebagai soft delete.
+    return this.prisma.exams.update({
+      where: { id },
+      data: { status: 'archived' },
+    });
+  }
+
+  // --- GET EXAM PUBLISHING ---
+  async findAllPublished() {
+    return this.prisma.exams.findMany({
+      where: {
+        status: 'published',
+      },
+      include: {
+        subject: true, // Biar dapet info ini ujian BUMN, CPNS, dll
+        _count: {
+          select: { examQuestions: true } // Biar tau jumlah soalnya
+        }
+      },
+      orderBy: {
+        createdAt: 'desc', // Ujian terbaru muncul paling atas
+      },
+    });
+  }
+
   // Get Exam Lengkap (Exams -> ExamQuestions -> Questions -> Answers)
   async findOneExam(id: number, userId: number) {
     const exam = await this.prisma.exams.findUnique({
-      where: { id },
+      where: { id, status: 'published' }, // Pastikan cuma yang published yang bisa diakses
       include: { subject: true }, // Tarik data basic dulu
     });
 
@@ -133,54 +194,74 @@ export class ExamsService {
       );
     }
 
-    return this.prisma.questions.create({
-      data: {
-        questionText: data.questionText,
-        questionType: data.questionType,
-        difficultyLevel: data.difficultyLevel ?? 'medium',
-        explanationText: data.explanationText ?? null,
-        points: data.points ? parseInt(data.points, 10) : 1,
-        timeLimitPerQuestion: data.timeLimitPerQuestion
-          ? parseInt(data.timeLimitPerQuestion, 10)
-          : null,
-        isActive: data.isActive ?? true,
-        tags: data.tags
-          ? (data.tags as Prisma.InputJsonValue)
-          : Prisma.JsonNull,
+    // Gunakan Transaction agar pembuatan soal dan koneksi ke ujian aman (atomic)
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Proses Pembuatan Soal
+      const question = await tx.questions.create({
+        data: {
+          questionText: data.questionText,
+          questionType: data.questionType,
+          difficultyLevel: data.difficultyLevel ?? 'medium',
+          explanationText: data.explanationText ?? null,
+          points: data.points ? parseInt(data.points, 10) : 1,
+          timeLimitPerQuestion: data.timeLimitPerQuestion
+            ? parseInt(data.timeLimitPerQuestion, 10)
+            : null,
+          isActive: data.isActive ?? true,
+          tags: data.tags
+            ? (data.tags as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
 
-        // Relasi 1: Subject (Wajib)
-        subject: {
-          connect: { id: parseInt(data.subjectId, 10) },
+          // Relasi 1: Subject (Wajib)
+          subject: {
+            connect: { id: parseInt(data.subjectId, 10) },
+          },
+
+          // Relasi 2: Creator (Wajib)
+          createdByUser: {
+            connect: { id: userId },
+          },
+
+          // Relasi 3: Topic (Opsional)
+          ...(data.topicId
+            ? {
+                topic: {
+                  connect: { id: parseInt(data.topicId, 10) },
+                },
+              }
+            : {}),
+
+          // Relasi 4: QuestionBank (Opsional)
+          ...(data.questionBankId
+            ? {
+                questionBank: {
+                  connect: { id: parseInt(data.questionBankId, 10) },
+                },
+              }
+            : {}),
+
+          // Metadata default
+          metadataJson: {
+            createdAtUi: new Date().toISOString(),
+            source: 'fast_create_with_exam',
+          } as Prisma.InputJsonValue,
         },
+      });
 
-        // Relasi 2: Creator (Wajib)
-        createdByUser: {
-          connect: { id: userId },
-        },
+      // 2. Logic Otomatis Konek ke Ujian (Jika examId dikirim)
+      if (data.examId) {
+        await tx.examQuestions.create({
+          data: {
+            examId: parseInt(data.examId, 10),
+            questionId: question.id,
+            orderInExam: data.orderInExam ? parseInt(data.orderInExam, 10) : 1,
+            // Poin soal di ujian disamakan dengan poin master soal
+            pointsForQuestion: new Prisma.Decimal(data.points || '1.0'),
+          },
+        });
+      }
 
-        // Relasi 3: Topic (Opsional) - Pake format connect biar TS aman
-        ...(data.topicId
-          ? {
-              topic: {
-                connect: { id: parseInt(data.topicId, 10) },
-              },
-            }
-          : {}),
-
-        // Relasi 4: QuestionBank (Opsional)
-        ...(data.questionBankId
-          ? {
-              questionBank: {
-                connect: { id: parseInt(data.questionBankId, 10) },
-              },
-            }
-          : {}),
-
-        // Metadata default
-        metadataJson: {
-          createdAtUi: new Date().toISOString(),
-        } as Prisma.InputJsonValue,
-      },
+      return question;
     });
   }
 
@@ -234,7 +315,7 @@ export class ExamsService {
         lastModifiedBy: userId,
         isActive: data.isActive ?? true,
         // Contoh metadata biar ESLint aman
-        metadataJson: { source: 'admin_dashboard' } as Prisma.InputJsonValue,
+        metadataJson: data.metadataJson as Prisma.InputJsonValue,
       },
     });
 
@@ -249,6 +330,48 @@ export class ExamsService {
     }
 
     return answer;
+  }
+
+  async getExamWithQuestions(examId: number) {
+    const exam = await this.prisma.exams.findUnique({
+      where: { id: examId },
+      select: {
+        id: true,
+        examName: true,
+        durationMinutes: true,
+        passingScore: true,
+        examQuestions: {
+          orderBy: { orderInExam: 'asc' },
+          select: {
+            orderInExam: true,
+            pointsForQuestion: true,
+            question: {
+              select: {
+                id: true,
+                questionText: true,
+                questionType: true,
+                explanationText: true, // Buat pembahasan
+                imageUrl: true,
+                answers: {
+                  where: { isActive: true },
+                  orderBy: { orderNumber: 'asc' },
+                  select: {
+                    id: true,
+                    answerText: true,
+                    isCorrect: true, // Kunci jawaban
+                    pointsIfSelected: true,
+                    metadataJson: true, // Label A, B, C, D
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!exam) throw new NotFoundException(`Ujian dengan ID ${examId} tidak ditemukan`);
+    return exam;
   }
 
   // --- Mekanisme Ujian (User Exam Attempt) ---
@@ -633,4 +756,92 @@ export class ExamsService {
       };
     });
   }
+
+  async updateExamQuestion(id: number, data: any) {
+    const existing = await this.prisma.examQuestions.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Relasi soal dan ujian tidak ditemukan');
+
+    // Tambahkan pengecekan data
+    if (!data) throw new BadRequestException('Payload data tidak boleh kosong');
+
+    return this.prisma.examQuestions.update({
+      where: { id },
+      data: {
+        // Menggunakan optional chaining atau pengecekan null
+        orderInExam: data?.orderInExam ? parseInt(data.orderInExam, 10) : undefined,
+        pointsForQuestion: data?.pointsForQuestion ? new Prisma.Decimal(data.pointsForQuestion) : undefined,
+        sectionName: data?.sectionName ?? undefined,
+      },
+    });
+  }
+
+  // --- 2. REMOVE QUESTION FROM EXAM ---
+  async removeQuestionFromExam(examId: number, questionId: number) {
+    // Cukup hapus record di tabel jembatan (ExamQuestions)
+    // Soal asli di tabel Questions tetap aman (tidak terhapus)
+    const record = await this.prisma.examQuestions.findFirst({
+      where: { examId, questionId }
+    });
+
+    if (!record) throw new NotFoundException('Soal tidak ditemukan di ujian ini');
+
+    return this.prisma.examQuestions.delete({
+      where: { id: record.id }
+    });
+  }
+
+  // --- 3. TOGGLE STATUS UJIAN (PUBLISH/DRAFT) ---
+  async updateExamStatus(id: number, status: string) {
+    const exam = await this.prisma.exams.findUnique({ where: { id } });
+    if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
+
+    return this.prisma.exams.update({
+      where: { id },
+      data: { status },
+    });
+  }
+  async bulkCreateQuestions(examId: number, userId: number, questions: any[]) {
+    return this.prisma.$transaction(async (tx) => {
+      // Definisikan tipe array-nya biar gak jadi 'never'
+      const results: Questions[] = []; 
+
+      for (const qData of questions) {
+        // Create Soal
+        const question = await tx.questions.create({
+          data: {
+            questionText: qData.questionText,
+            questionType: qData.questionType || 'multiple_choice',
+            // Pastikan subjectId diconvert ke number
+            subject: {
+              connect: { id: parseInt(qData.subjectId, 10) }
+            },
+            createdByUser: {
+              connect: { id: userId }
+            },
+            points: qData.points ? parseInt(qData.points, 10) : 5,
+            difficultyLevel: qData.difficultyLevel || 'medium',
+            isActive: true,
+            metadataJson: {
+              source: 'bulk_upload',
+              createdAt: new Date().toISOString()
+            } as Prisma.InputJsonValue
+          }
+        });
+
+        // Hubungkan ke Exam
+        await tx.examQuestions.create({
+          data: {
+            exam: { connect: { id: examId } },
+            question: { connect: { id: question.id } },
+            orderInExam: qData.orderInExam ? parseInt(qData.orderInExam, 10) : 1,
+            pointsForQuestion: new Prisma.Decimal(qData.points || '5.0'),
+          }
+        });
+
+        results.push(question);
+      }
+      return results;
+    });
+  }
+
 }

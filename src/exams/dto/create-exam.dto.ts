@@ -11,7 +11,7 @@ import {
 export class CreateExamDto {
   @IsNotEmpty()
   @IsString()
-  examName: string;
+  examName!: string;
 
   @IsOptional()
   @IsString()
@@ -19,11 +19,11 @@ export class CreateExamDto {
 
   @IsNotEmpty()
   @IsNumberString()
-  subjectId: string;
+  subjectId!: string;
 
   @IsNotEmpty()
   @IsNumberString()
-  durationMinutes: string;
+  durationMinutes!: string;
 
   @IsOptional()
   @IsDateString()
@@ -35,7 +35,7 @@ export class CreateExamDto {
 
   @IsNotEmpty()
   @IsEnum(['tryout', 'quiz', 'final_exam', 'practice'])
-  examType: string;
+  examType!: string;
 
   @IsOptional()
   @IsEnum(['draft', 'published', 'closed', 'archived'])

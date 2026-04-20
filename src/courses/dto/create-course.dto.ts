@@ -9,11 +9,11 @@ import {
 export class CreateCourseDto {
   @IsNotEmpty()
   @IsString()
-  courseTitle: string;
+  courseTitle!: string;
 
   @IsNotEmpty()
   @IsNumberString()
-  subjectId: string; // Kategori Kelas (BUMN/CPNS)
+  subjectId!: string; // Kategori Kelas (BUMN/CPNS)
 
   @IsNotEmpty()
   @IsNumberString()
@@ -21,11 +21,11 @@ export class CreateCourseDto {
 
   @IsNotEmpty()
   @IsEnum(['beginner', 'intermediate', 'advance', 'advanced'])
-  difficultyLevel: string;
+  difficultyLevel!: string;
 
   @IsNotEmpty()
   @IsNumberString()
-  price: string;
+  price!: string;
 
   @IsOptional()
   @IsString()

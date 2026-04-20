@@ -7,7 +7,7 @@ import {
 } from 'class-validator';
 
 export class CreateSubjectDto {
-  @IsNotEmpty() @IsString() subject_name: string;
+  @IsNotEmpty() @IsString() subject_name!: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsBooleanString() is_active?: string;
   @IsOptional() @IsNumberString() total_questions_count?: string;

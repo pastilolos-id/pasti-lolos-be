@@ -96,4 +96,22 @@ export class AuthController {
 
     return res.redirect(`http://localhost:3000/login`);
   }
+
+  @Post('logout')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async logout(@Res({ passthrough: true }) res: Response) {
+    // 1. Hapus cookie dengan cara menimpa nilainya dan set expired ke masa lalu
+    res.cookie('token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      expires: new Date(0), // Set ke tanggal 1 Januari 1970
+    });
+
+    // 2. Return response sukses
+    return {
+      message: 'Logout berhasil, cookie telah dihapus',
+    };
+  }
 }

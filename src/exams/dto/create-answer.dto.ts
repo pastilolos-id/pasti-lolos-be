@@ -4,16 +4,19 @@ import {
   IsNumberString,
   IsOptional,
   IsBoolean,
+  IsObject,
+  IsInt, 
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateAnswerDto {
   @IsNotEmpty()
   @IsNumberString()
-  questionId: string;
+  questionId!: string; // Error minta number string
 
   @IsNotEmpty()
   @IsString()
-  answerText: string;
+  answerText!: string;
 
   @IsOptional()
   @IsBoolean()
@@ -25,13 +28,26 @@ export class CreateAnswerDto {
 
   @IsOptional()
   @IsNumberString()
-  orderNumber?: string;
+  orderNumber?: string; // Error minta number string
 
   @IsOptional()
   @IsNumberString()
-  pointsIfSelected?: string;
+  pointsIfSelected?: string; // Error minta number string
 
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  justificationForCorrect?: string;
+
+  // Ini biar error "property metadataJson should not exist" ilang
+  @IsOptional()
+  @IsObject()
+  metadataJson?: Record<string, any>;
+
+  @IsOptional()
+  @IsString()
+  internalNotes?: string;
 }

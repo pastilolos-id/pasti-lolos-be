@@ -5,9 +5,9 @@ import { Request } from 'express';
 
 // Interface untuk payload JWT agar tidak 'any'
 interface JwtPayload {
-  sub: number; // userId
+  userId: number; // userId
   email: string;
-  role: string[]; // Array string karena di DB lo pake junction user_role
+  roles: string[]; // Array string karena di DB lo pake junction user_role
   iat?: number;
   exp?: number;
 }
@@ -32,9 +32,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   // Payload sudah bertipe JwtPayload, bukan any lagi
   validate(payload: JwtPayload) {
     return {
-      userId: payload.sub,
-      email: payload.email,
-      role: payload.role,
+      // userId: payload.sub,
+      // email: payload.email,
+      // role: payload.role,
+      userId: payload.userId, // Sesuai dengan payload.userId di AuthService
+      email: payload.email, 
+      roles: payload.roles
     };
   }
 }
