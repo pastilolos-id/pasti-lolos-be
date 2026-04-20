@@ -7,4 +7,4 @@ async function main() {
     create: { id: 1, roleName: 'USER', isActive: true },
   });
 }
-main().then(() => console.log('Seed berhasil'));
+void main().then(() => console.log('Seed berhasil'));

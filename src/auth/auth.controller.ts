@@ -1,41 +1,117 @@
-  import { Controller, Post, Get, Body, UseGuards, Req, Res } from '@nestjs/common';
-  import { AuthGuard } from '@nestjs/passport';
-  import { AuthService } from './auth.service';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  UseGuards,
+  Req,
+  Res,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { AuthService } from './auth.service';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { RegisterDto } from './dto/register.dto'; // Import DTO
+import { LoginDto } from './dto/login.dto'; // Import DTO
+import express from 'express';
+import type { Response } from 'express';
 
-  @Controller('auth')
-  export class AuthController {
-    constructor(private authService: AuthService) {}
+interface GoogleUserPayload {
+  googleId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  picture?: string;
+}
+@Controller('auth')
+export class AuthController {
+  constructor(private authService: AuthService) {}
 
-    @Post('register')
-    register(@Body() body: any) {
-      return this.authService.register(body);
-    }
-
-    @Post('login')
-    login(@Body() body: any) {
-      return this.authService.validateUser(body.email, body.password);
-    }
-
-    @Get('google')
-    @UseGuards(AuthGuard('google'))
-    async googleAuth(@Req() req) {}
-
-    @Get('google/callback')
-    @UseGuards(AuthGuard('google'))
-    async googleAuthRedirect(@Req() req, @Res() res) {
-      const result = await this.authService.validateGoogleUser(req.user);
-      // Setelah login Google, kirim token ke frontend Next.js
-      return res.redirect(`http://localhost:3000/auth-success?token=${result.accessToken}`);
-    }
-    @Get('me')
-    @UseGuards(AuthGuard('jwt')) // <--- Ini pelindungnya
-    getProfile(@Req() req) {
-      // req.user berisi data dari JwtStrategy.validate()
-      return {
-        message: 'Kamu berhasil mengakses data rahasia',
-        user: req.user,
-      };
-    }
+  @Post('register')
+  // Body sekarang sudah tervalidasi oleh RegisterDto
+  register(@Body() registerDto: RegisterDto) {
+    return this.authService.register(registerDto);
   }
 
-  // http://localhost:4000/auth/google/callback
+  @Post('login')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response, // Gunakan passthrough: true agar tetap bisa return object
+  ) {
+    // 1. Validasi user dan dapatkan token dari service
+    const result = await this.authService.validateUser(
+      loginDto.email,
+      loginDto.password,
+    );
+
+    // 2. Set Cookie
+    res.cookie('token', result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 hari
+    });
+
+    // 3. Kembalikan data user (tanpa token di body juga gak apa-apa karena sudah di cookie)
+    return {
+      message: 'Login berhasil',
+      user: result.user,
+    };
+  }
+
+  @Get('google')
+  @UseGuards(AuthGuard('google'), ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async googleAuth() {
+    // Biarkan kosong, Passport yang urus redirect-nya
+  }
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleAuthRedirect(
+    @Req() req: express.Request,
+    @Res() res: express.Response,
+  ) {
+    const user = req.user;
+
+    // Cek jika user tidak ada, langsung throw error
+    if (!user) {
+      throw new UnauthorizedException('Google authentication failed');
+    }
+
+    // Sekarang TypeScript tahu 'user' pasti ada dan bukan undefined
+    // Kita cast ke interface yang lu buat sebelumnya
+    const result = await this.authService.validateGoogleUser(
+      user as GoogleUserPayload,
+    );
+
+    res.cookie('token', result.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.redirect(`http://localhost:3000/login`);
+  }
+
+  @Post('logout')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async logout(@Res({ passthrough: true }) res: Response) {
+    // 1. Hapus cookie dengan cara menimpa nilainya dan set expired ke masa lalu
+    res.cookie('token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      expires: new Date(0), // Set ke tanggal 1 Januari 1970
+    });
+
+    // 2. Return response sukses
+    return {
+      message: 'Logout berhasil, cookie telah dihapus',
+    };
+  }
+}

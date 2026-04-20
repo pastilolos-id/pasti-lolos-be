@@ -1,80 +1,143 @@
 // src/auth/auth.service.ts
-import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { RegisterDto } from './dto/register.dto';
+
+interface GoogleUserPayload {
+  googleId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  picture?: string; // Tanda tanya (?) berarti opsional
+}
+interface AuthResult {
+  accessToken: string;
+  user: {
+    id: number;
+    email: string;
+    username: string;
+    userRoleId: number;
+  };
+}
 
 @Injectable()
 export class AuthService {
-  constructor(private prisma: PrismaService, private jwtService: JwtService) {}
-
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+  ) {}
   // REGISTER MANUAL
-  async register(data: any) {
-    const exists = await this.prisma.users.findUnique({ where: { email: data.email } });
+  async register(data: RegisterDto) {
+    // console.log('Data dari FE:', data);
+
+    // 1. Cek duplikasi email
+    const exists = await this.prisma.users.findUnique({
+      where: { email: data.email },
+    });
     if (exists) throw new BadRequestException('Email sudah terdaftar');
 
+    // 2. Logika pemisahan Nama
+    const nameParts = data.fullName.trim().split(' ');
+    // TypeScript fix: kasih default '' agar tidak dianggap 'string | undefined'
+    const firstName = nameParts.shift() || '';
+    const lastName = nameParts.join(' ');
+
+    // 3. Hash Password (Gunakan data.password)
     const hashedPassword = await bcrypt.hash(data.password, 10);
+
+    // 4. Simpan ke Database
+    // confirmPassword OTOMATIS terbuang karena tidak kita masukkan ke blok data di bawah
     return this.prisma.users.create({
       data: {
         email: data.email,
-        username: data.username,
-        passwordHash: hashedPassword, // camelCase
-        userRoleId: 4, // camelCase
+        // Username unik: email prefix + random number
+        username: data.email.split('@')[0] + Math.floor(Math.random() * 1000),
+        passwordHash: hashedPassword,
+        firstName: firstName,
+        lastName: lastName,
+        phoneNumber: data.phoneNumber,
+        isAgreed: data.isAgreed,
+        userRoleId: 1,
         status: 'active',
       },
     });
   }
 
   // LOGIN MANUAL
-  async validateUser(email: string, pass: string) {
+  async validateUser(email: string, pass: string): Promise<AuthResult> {
     const user = await this.prisma.users.findUnique({ where: { email } });
-    
+
     // Pastikan menggunakan user.passwordHash (camelCase)
     if (user && (await bcrypt.compare(pass, user.passwordHash))) {
-      return this.generateToken(user);
+      return this.generateToken({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        userRoleId: user.userRoleId,
+      });
     }
     throw new UnauthorizedException('Email atau password salah');
   }
 
   // LOGIN GOOGLE (Otomatis daftar kalau belum ada)
-  async validateGoogleUser(googleUser: any) {
+  async validateGoogleUser(googleUser: GoogleUserPayload): Promise<AuthResult> {
     let user = await this.prisma.users.findFirst({
-      where: { 
-        OR: [
-          { googleId: googleUser.googleId }, // camelCase
-          { email: googleUser.email }
-        ] 
-      }
+      where: {
+        OR: [{ googleId: googleUser.googleId }, { email: googleUser.email }],
+      },
     });
 
     if (!user) {
       user = await this.prisma.users.create({
         data: {
           email: googleUser.email,
-          googleId: googleUser.googleId, // camelCase
-          username: googleUser.email.split('@')[0] + Math.floor(Math.random() * 1000),
-          passwordHash: '', // camelCase
-          firstName: googleUser.firstName, // camelCase
-          lastName: googleUser.lastName, // camelCase
-          profilePictureUrl: googleUser.picture, // camelCase
-          userRoleId: 4, // camelCase
+          googleId: googleUser.googleId,
+          username:
+            googleUser.email.split('@')[0] + Math.floor(Math.random() * 1000),
+          passwordHash: '',
+          firstName: googleUser.firstName,
+          lastName: googleUser.lastName,
+          profilePictureUrl: googleUser.picture || null, // Handle jika foto tidak ada
+          userRoleId: 1,
           status: 'active',
         },
       });
     }
-    return this.generateToken(user);
+    return this.generateToken({
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      userRoleId: user.userRoleId,
+    });
   }
 
-  async generateToken(user: any) {
-    // Gunakan user.userRoleId (camelCase)
-    const payload = { sub: user.id, email: user.email, role: user.userRoleId };
+  generateToken(user: {
+    id: number;
+    email: string;
+    username: string;
+    userRoleId: number;
+  }): AuthResult {
+    const payload = {
+        userId: user.id, // Tambahkan ini agar req.user.userId tidak undefined
+        sub: user.id,
+        email: user.email,
+        roles: [user.userRoleId.toString()], // BERUBAH KE JAMAK DAN STRING ARRAY
+      };
+
     return {
       accessToken: this.jwtService.sign(payload),
-      user: { 
-        id: user.id, 
-        username: user.username, 
-        role: user.userRoleId 
-      }
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        userRoleId: user.userRoleId,
+      },
     };
   }
 }
