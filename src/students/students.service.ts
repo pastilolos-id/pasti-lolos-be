@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
@@ -11,7 +11,7 @@ export class StudentsService {
     const orders = await this.prisma.orders.findMany({
       where: {
         userId,
-        orderStatus: 'completed', // Hanya yang sudah dibayar
+        orderStatus: 'completed',
       },
       include: {
         orderItems: {
@@ -20,30 +20,71 @@ export class StudentsService {
       },
     });
 
-    // Ambil ID ujian dari item order
+    // 1. Cek kalau ternyata user belum pernah beli apapun
+    if (orders.length === 0) {
+      return {
+        message: "Anda belum memiliki ujian. Silakan beli paket ujian terlebih dahulu.",
+        data: []
+      };
+    }
+
     const examIds = orders.flatMap(order => 
       order.orderItems.map(item => item.itemId)
     );
 
-    return this.prisma.exams.findMany({
+    const exams = await this.prisma.exams.findMany({
       where: { id: { in: examIds } },
       include: { subject: true },
     });
+
+    // 2. Cek lagi kalau record order ada tapi link ke exams-nya bermasalah (jarang tapi jaga-jaga)
+    if (exams.length === 0) {
+      return {
+        message: "Belum ada ujian yang tersedia untuk akun Anda.",
+        data: []
+      };
+    }
+
+    return {
+      message: "Success.",
+      data: exams
+    };
   }
 
   // 2. Riwayat Ujian (Exam Attempts)
   async getMyAttempts(userId: number) {
-    return this.prisma.userExams.findMany({
+    const attempts = await this.prisma.userExams.findMany({
       where: { userId },
       include: {
-        exam: { select: { examName: true, durationMinutes: true } },
+        exam: { 
+          select: { 
+            examName: true, 
+            durationMinutes: true 
+          } 
+        },
       },
       orderBy: { startTime: 'desc' },
     });
+
+    // Cek jika belum ada riwayat pengerjaan
+    if (attempts.length === 0) {
+      return {
+        message: "Anda belum pernah mengerjakan ujian. Ayo mulai ujian pertama Anda!",
+        data: []
+      };
+    }
+
+    return {
+      message: "Berhasil mengambil riwayat ujian.",
+      data: attempts
+    };
   }
 
   // 3. Profil & Progres Stats
   async getProfileStats(userId: number) {
+    if (!userId) {
+      throw new BadRequestException('User ID tidak ditemukan dalam token');
+    }
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
       select: {
@@ -52,12 +93,16 @@ export class StudentsService {
         firstName: true,
         lastName: true,
         phoneNumber: true,
+        profilePictureUrl: true
       },
     });
+
+    if (!user) throw new NotFoundException('User tidak ditemukan');
 
     const totalAttempts = await this.prisma.userExams.count({
       where: { userId, status: 'submitted' },
     });
+
 
     return {
       profile: user,

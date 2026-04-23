@@ -20,7 +20,8 @@ export class StudentsController {
 
   @Get('profile')
   async getProfile(@Req() req: any) {
-    return this.studentsService.getProfileStats(req.user.id);
+    const id = req.user.userId || req.user.id || req.user.sub;
+    return this.studentsService.getProfileStats(id);
   }
 
   @Get('attempts/:id/review')
