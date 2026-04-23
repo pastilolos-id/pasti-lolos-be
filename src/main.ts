@@ -2,10 +2,13 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
 import { ValidationPipe } from '@nestjs/common';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
+  app.enableCors()
+  app.useGlobalFilters(new PrismaExceptionFilter())
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true, // Hacker kirim field aneh? Langsung dihapus/diabaikan.

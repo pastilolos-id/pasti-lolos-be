@@ -472,6 +472,18 @@ export class ExamsService {
     if (!attempt || attempt.userId !== userId)
       throw new NotFoundException('Sesi tidak ditemukan');
     if (attempt.status === 'submitted') return attempt;
+    if (!attempt || attempt.status !== 'in_progress') {
+      throw new BadRequestException('Ujian tidak aktif atau sudah selesai');
+    }
+
+    const now = new Date();
+    const durationInMs = attempt.exam.durationMinutes * 60000;
+    const deadline = new Date(attempt.startTime.getTime() + durationInMs);
+
+    if (now > deadline) {
+      // Jika lewat waktu, kita paksa submit apa adanya
+      console.log("Waktu habis! Auto-submitting...");
+    }
 
     const userAnswers = await this.prisma.userExamAnswers.findMany({
       where: { userExamId },
@@ -842,6 +854,32 @@ export class ExamsService {
       }
       return results;
     });
+  }
+
+  // Tambahkan ini di ExamsService (src/exams/exams.service.ts)
+  async getExamReview(userExamId: number, userId: number) {
+    const attempt = await this.prisma.userExams.findUnique({
+      where: { id: userExamId },
+      include: {
+        exam: {
+          include: {
+            examQuestions: {
+              include: {
+                question: {
+                  include: { answers: true }
+                }
+              }
+            }
+          }
+        },
+        userExamAnswers: true
+      }
+    });
+
+    if (!attempt || attempt.userId !== userId) throw new NotFoundException();
+    
+    // Return data beserta ExplanationText untuk pembahasan
+    return attempt;
   }
 
 }

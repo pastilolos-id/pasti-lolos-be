@@ -7,6 +7,7 @@ import { ConfigModule } from '@nestjs/config';
 import { CoursesModule } from './courses/courses.module';
 import { ExamsModule } from './exams/exams.module';
 import { BankSoalModule } from './questions-bank/questions.module';
+import { StudentsModule } from './students/students.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -32,6 +33,7 @@ import { APP_GUARD } from '@nestjs/core';
     ExamsModule,
     BankSoalModule,
     AdminModule,
+    StudentsModule,
   ],
   controllers: [],
   providers: [
