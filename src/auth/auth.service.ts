@@ -23,6 +23,9 @@ interface AuthResult {
     email: string;
     username: string;
     userRoleId: number;
+    firstName?: string; // Opsional, bisa ditambahkan jika ingin dikirim ke FE
+    lastName?: string;  // Opsional, bisa ditambahkan jika ingin dikirim ke FE
+    profilePictureUrl?: string; // Opsional, bisa ditambahkan jika ingin dikirim ke FE
   };
 }
 
@@ -117,19 +120,15 @@ export class AuthService {
     });
   }
 
-  generateToken(user: {
-    id: number;
-    email: string;
-    username: string;
-    userRoleId: number;
-  }): AuthResult {
+  generateToken(user: any): AuthResult {
     const payload = {
-        userId: user.id, // Tambahkan ini agar req.user.userId tidak undefined
-        sub: user.id,
-        email: user.email,
-        roles: [user.userRoleId.toString()], // BERUBAH KE JAMAK DAN STRING ARRAY
-      };
+      userId: user.id,
+      sub: user.id,
+      email: user.email,
+      roles: [user.userRoleId.toString()],
+    };
 
+    // Pastikan field-field ini ada di object 'user' yang dikirim ke fungsi ini
     return {
       accessToken: this.jwtService.sign(payload),
       user: {
@@ -137,7 +136,33 @@ export class AuthService {
         email: user.email,
         username: user.username,
         userRoleId: user.userRoleId,
+        firstName: user.firstName || null, 
+        lastName: user.lastName || null,
+        profilePictureUrl: user.profilePictureUrl || null,
       },
     };
   }
+  // generateToken(user: {
+  //   id: number;
+  //   email: string;
+  //   username: string;
+  //   userRoleId: number;
+  // }): AuthResult {
+  //   const payload = {
+  //       userId: user.id, // Tambahkan ini agar req.user.userId tidak undefined
+  //       sub: user.id,
+  //       email: user.email,
+  //       roles: [user.userRoleId.toString()], // BERUBAH KE JAMAK DAN STRING ARRAY
+  //     };
+
+  //   return {
+  //     accessToken: this.jwtService.sign(payload),
+  //     user: {
+  //       id: user.id,
+  //       email: user.email,
+  //       username: user.username,
+  //       userRoleId: user.userRoleId,
+  //     },
+  //   };
+  // }
 }
