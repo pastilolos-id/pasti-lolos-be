@@ -1,12 +1,14 @@
-import { Controller, Get, UseGuards, Req , Param, ParseIntPipe, Patch, Body} from '@nestjs/common';
+import { Controller, Get, UseGuards, Req , Param, ParseIntPipe, Patch, Body, Res} from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { AuthGuard } from '@nestjs/passport';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { CertificatesService } from './certificates.service';
+import type { Response } from 'express';
 
 @Controller('students')
 @UseGuards(AuthGuard('jwt'))
 export class StudentsController {
-  constructor(private readonly studentsService: StudentsService) {}
+  constructor(private readonly studentsService: StudentsService, private readonly certificatesService: CertificatesService) {}
 
   @Get('dashboard/exams')
   async getMyExams(@Req() req: any) {
@@ -37,6 +39,14 @@ export class StudentsController {
   @Patch('profile')
     async updateProfile(@Req() req: any, @Body() dto: UpdateProfileDto) {
     return this.studentsService.updateProfile(req.user.id, dto);
+  }
+
+  @Get('certificate/:userExamId')
+  async downloadCert(
+    @Param('userExamId') id: string,
+    @Res() res: Response
+  ) {
+    return this.certificatesService.generateExamCertificate(+id, res);
   }
 
 }

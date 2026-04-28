@@ -27,6 +27,8 @@ import { CreateAnswerDto } from './dto/create-answer.dto';
 import { AddQuestionToExamDto } from './dto/add-question-to-exam.dto';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorators';
+import { BulkCreateQuestionsDto } from './dto/bulk-create-questions.dto';
+import { SubmitExamDto } from './dto/submit-exam.dto';
 
 // Interface untuk Type-Safety Request
 interface RequestWithUser extends Request {
@@ -45,13 +47,13 @@ export class ExamsController {
 
   // --- CRUD EXAMS ---
   @Post('create')
-  @Roles('3', '4') // 3 = admin, 4 = kontributor
+  @Roles('2', '3') // 3 = admin, 4 = kontributor
   createExam(@Body() body: CreateExamDto, @Req() req: RequestWithUser) {
     return this.examsService.createExam(body, req.user.userId);
   }
 
   @Patch('update/:id')
-  @Roles('3', '4') // Admin (3) & Kontributor (4)
+  @Roles('2', '3') // Admin (3) & Kontributor (4)
   update(
     @Param('id') id: string,
     @Body() body: Partial<CreateExamDto>,
@@ -62,13 +64,13 @@ export class ExamsController {
 
   // Soft Delete Exam
   @Delete('delete/:id')
-  @Roles('3') // Biasanya cuma Admin (3) yang boleh hapus
+  @Roles('2') // Biasanya cuma Admin (3) yang boleh hapus
   remove(@Param('id') id: string) {
     return this.examsService.softDeleteExam(+id);
   }
 
   @Get('get-all')
-  @Roles('1', '3', '4') // Murid, Admin, Guru tetep bisa akses list ini
+  @Roles('1', '2', '3') // Murid, Admin, Guru tetep bisa akses list ini
   findAllPublished() {
     return this.examsService.findAllPublished();
   }
@@ -91,13 +93,13 @@ export class ExamsController {
   }
 
   @Post('answers')
-  @Roles('3', '4') 
+  @Roles('2', '3') 
   createAnswer(@Body() body: CreateAnswerDto, @Req() req: RequestWithUser) {
     return this.examsService.createAnswer(body, req.user.userId);
   }
 
   @Get(':id/get-exams')
-  @Roles('1', '3', '4') 
+  @Roles('1', '2', '3') 
   async getFullDetails(@Param('id') id: string) {
     return this.examsService.getExamWithQuestions(+id);
   }
@@ -199,13 +201,29 @@ export class ExamsController {
     return this.examsService.updateExamStatus(+id, status);
   }
 
-  // Bulk Create
-  // @Post(':id/questions/bulk')
-  // async bulkCreate(
-  //   @Param('id') id: string,
-  //   @Body('questions') questions: any[],
-  //   @Request() req
-  // ) {
-  //   return this.examsService.bulkCreateQuestions(+id, req.user.id, questions);
-  // }
+
+  @Post('questions/bulk')
+  @Roles('2', '3') // Admin & Contributor
+  async bulkCreate(
+    @Body() dto: BulkCreateQuestionsDto,
+    @Req() req: any // req: any dulu untuk mempermudah akses userId
+  ) {
+    // Ambil userId sesuai dengan struktur payload JWT lo (req.user.userId)
+    const userId = req.user.userId || req.user.id;
+    return this.examsService.bulkCreateQuestions(dto, userId);
+  }
+
+  @Post('submit')
+  async submitExam(
+    @Body() dto: SubmitExamDto,
+    @Req() req: any
+  ) {
+    return this.examsService.submitExam(dto, req.user.userId);
+  }
+
+  // Di ExamsController
+  @Get('checkout-preview/:id')
+  async getCheckoutPreview(@Param('id') id: string) {
+    return this.examsService.getExamCheckoutPreview(+id);
+  }
 }

@@ -8,6 +8,7 @@ import { CoursesModule } from './courses/courses.module';
 import { ExamsModule } from './exams/exams.module';
 import { BankSoalModule } from './questions-bank/questions.module';
 import { StudentsModule } from './students/students.module';
+import { PaymentsModule } from './payments/payments.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 
@@ -34,6 +35,7 @@ import { APP_GUARD } from '@nestjs/core';
     BankSoalModule,
     AdminModule,
     StudentsModule,
+    PaymentsModule,
   ],
   controllers: [],
   providers: [

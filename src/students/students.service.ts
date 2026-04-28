@@ -188,10 +188,31 @@ export class StudentsService {
     }
 
     async updateProfile(userId: number, data: UpdateProfileDto) {
-    return this.prisma.users.update({
-        where: { id: userId },
-        data: data, // Hanya kolom yang ada di DTO yang akan terupdate
-    });
+      return this.prisma.users.update({
+          where: { id: userId },
+          data: data, // Hanya kolom yang ada di DTO yang akan terupdate
+      });
+    }
+
+    async getStudentStats(userId: number) {
+      const attempts = await this.prisma.userExams.findMany({
+        where: { userId },
+        select: { score: true, status: true }
+      });
+
+      const completed = attempts.filter(a => a.status === 'submitted');
+      const totalScore = completed.reduce((acc, curr) => acc + Number(curr.score || 0), 0);
+
+      return {
+        totalExamsTaken: completed.length,
+        averageScore: completed.length > 0 ? (totalScore / completed.length).toFixed(2) : 0,
+        recentAttempts: await this.prisma.userExams.findMany({
+          where: { userId },
+          include: { exam: { select: { examName: true } } },
+          orderBy: { startTime: 'desc' },
+          take: 5
+        })
+      };
     }
 
 }

@@ -18,6 +18,8 @@ import { CreateQuestionDto } from './dto/create-question.dto';
 import { AddQuestionToExamDto } from './dto/add-question-to-exam.dto';
 import { CreateAnswerDto } from './dto/create-answer.dto';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { BulkCreateQuestionsDto } from './dto/bulk-create-questions.dto';
+import { SubmitExamDto } from './dto/submit-exam.dto';
 // import { session } from 'passport';
 
 @Injectable()
@@ -267,6 +269,9 @@ export class ExamsService {
 
   // --- MENGHUBUNGKAN SOAL KE UJIAN (ExamQuestions) ---
   async addQuestionToExam(data: AddQuestionToExamDto): Promise<ExamQuestions> {
+    if (!data.examId) {
+      throw new BadRequestException('examId is required');
+    }
     const examIdInt = parseInt(data.examId, 10);
     const questionIdInt = parseInt(data.questionId, 10);
 
@@ -812,49 +817,6 @@ export class ExamsService {
       data: { status },
     });
   }
-  async bulkCreateQuestions(examId: number, userId: number, questions: any[]) {
-    return this.prisma.$transaction(async (tx) => {
-      // Definisikan tipe array-nya biar gak jadi 'never'
-      const results: Questions[] = []; 
-
-      for (const qData of questions) {
-        // Create Soal
-        const question = await tx.questions.create({
-          data: {
-            questionText: qData.questionText,
-            questionType: qData.questionType || 'multiple_choice',
-            // Pastikan subjectId diconvert ke number
-            subject: {
-              connect: { id: parseInt(qData.subjectId, 10) }
-            },
-            createdByUser: {
-              connect: { id: userId }
-            },
-            points: qData.points ? parseInt(qData.points, 10) : 5,
-            difficultyLevel: qData.difficultyLevel || 'medium',
-            isActive: true,
-            metadataJson: {
-              source: 'bulk_upload',
-              createdAt: new Date().toISOString()
-            } as Prisma.InputJsonValue
-          }
-        });
-
-        // Hubungkan ke Exam
-        await tx.examQuestions.create({
-          data: {
-            exam: { connect: { id: examId } },
-            question: { connect: { id: question.id } },
-            orderInExam: qData.orderInExam ? parseInt(qData.orderInExam, 10) : 1,
-            pointsForQuestion: new Prisma.Decimal(qData.points || '5.0'),
-          }
-        });
-
-        results.push(question);
-      }
-      return results;
-    });
-  }
 
   // Tambahkan ini di ExamsService (src/exams/exams.service.ts)
   async getExamReview(userExamId: number, userId: number) {
@@ -880,6 +842,141 @@ export class ExamsService {
     
     // Return data beserta ExplanationText untuk pembahasan
     return attempt;
+  }
+
+  async bulkCreateQuestions(dto: BulkCreateQuestionsDto, userId: number) {
+    if (!dto.questions || dto.questions.length === 0) {
+      throw new BadRequestException('Questions array is required and cannot be empty');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const results: Questions[] = [];
+
+      for (const q of dto.questions) {
+        // Validasi manual lo tetap gue jaga di sini
+        if (!q.questionText || q.questionText.trim() === '') {
+          throw new BadRequestException('questionText is required and cannot be empty');
+        }
+        if (!q.answers || q.answers.length === 0) {
+          throw new BadRequestException('Answers are required for each question');
+        }
+        if (dto.examId === undefined) throw new BadRequestException('examId wajib diisi');
+        if (q.orderInExam === undefined) throw new BadRequestException('orderInExam wajib diisi');
+        if (dto.subjectId === undefined) throw new BadRequestException('subjectId wajib diisi');
+        if (q.answers.length < 2) throw new BadRequestException('Minimal 2 jawaban');
+
+        // 1. Buat Soal
+        const question = await tx.questions.create({
+          data: {
+            questionText: q.questionText,
+            explanationText: q.explanationText || null,
+            subjectId: dto.subjectId,
+            questionType: 'multiple_choice',
+            points: q.points || 5,
+            difficultyLevel: q.difficultyLevel || 'medium',
+            createdByUserId: userId,
+            isActive: true,
+            answers: {
+              create: q.answers.map((a, i) => {
+                // Validasi jawaban
+                if (!a.label || !a.answerText || a.isCorrect === undefined) {
+                  throw new BadRequestException(`Answer ke-${i + 1} tidak lengkap`);
+                }
+
+                return {
+                  answerText: a.answerText,
+                  isCorrect: a.isCorrect,
+                  // KARENA GAK ADA KOLOM LABEL DI DB, KITA TARUH DI SINI:
+                  metadataJson: { label: a.label } 
+                };
+              })
+            }
+          }
+        });
+
+        // 2. Hubungkan ke ExamQuestions
+        await tx.examQuestions.create({
+          data: {
+            examId: dto.examId,
+            questionId: question.id,
+            orderInExam: q.orderInExam,
+            pointsForQuestion: new Prisma.Decimal(q.points || 5),
+          }
+        });
+
+        results.push(question);
+      }
+
+      return {
+        message: `${results.length} soal berhasil di-import dengan Subject ID: ${dto.subjectId}`,
+        count: results.length
+      };
+    });
+  }
+
+  async submitExam(dto: SubmitExamDto, userId: number) {
+    const { userExamId, answers } = dto;
+
+    // 1. Cek apakah attempt ujian ini milik user dan statusnya masih 'in_progress'
+    const attempt = await this.prisma.userExams.findUnique({
+      where: { id: userExamId },
+      include: { exam: true }
+    });
+
+    if (!attempt || attempt.userId !== userId) {
+      throw new NotFoundException('Data ujian tidak ditemukan');
+    }
+
+    if (attempt.status === 'submitted') {
+      throw new BadRequestException('Ujian ini sudah dikumpulkan sebelumnya');
+    }
+
+    let totalScore = 0;
+
+    return this.prisma.$transaction(async (tx) => {
+      // 2. Simpan setiap jawaban user ke tabel UserExamAnswers
+      for (const ans of answers) {
+        const correctOption = await tx.answers.findFirst({
+          where: { questionId: ans.questionId, isCorrect: true }
+        });
+
+        const isCorrect = correctOption?.id === ans.selectedAnswerId;
+        
+        // Ambil poin dari relasi ExamQuestions
+        const examQuestion = await tx.examQuestions.findFirst({
+          where: { examId: attempt.examId, questionId: ans.questionId }
+        });
+
+        const points = Number(examQuestion?.pointsForQuestion || 0);
+        if (isCorrect) totalScore += points;
+
+        await tx.userExamAnswers.create({
+          data: {
+            userExamId,
+            questionId: ans.questionId,
+            selectedAnswerId: ans.selectedAnswerId,
+            isCorrect,
+            metadataJson: {}
+          }
+        });
+      }
+
+      // 3. Update status ujian jadi 'submitted' dan simpan skor akhir
+      const updatedAttempt = await tx.userExams.update({
+        where: { id: userExamId },
+        data: {
+          status: 'submitted',
+          endTime: new Date(),
+          score: totalScore
+        }
+      });
+
+      return {
+        message: "Ujian berhasil dikumpulkan",
+        finalScore: totalScore,
+        attemptId: updatedAttempt.id
+      };
+    });
   }
 
 }
