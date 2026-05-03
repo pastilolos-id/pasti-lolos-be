@@ -916,39 +916,42 @@ export class ExamsService {
 
   async submitExam(dto: SubmitExamDto, userId: number) {
     const { userExamId, answers } = dto;
-
-    // 1. Cek apakah attempt ujian ini milik user dan statusnya masih 'in_progress'
     const attempt = await this.prisma.userExams.findUnique({
       where: { id: userExamId },
       include: { exam: true }
     });
 
-    if (!attempt || attempt.userId !== userId) {
-      throw new NotFoundException('Data ujian tidak ditemukan');
-    }
-
-    if (attempt.status === 'submitted') {
-      throw new BadRequestException('Ujian ini sudah dikumpulkan sebelumnya');
-    }
-
-    let totalScore = 0;
+    if (!attempt || attempt.userId !== userId) throw new NotFoundException('Data ujian tidak ditemukan');
+    if (attempt.status === 'submitted') throw new BadRequestException('Ujian sudah dikumpulkan');
 
     return this.prisma.$transaction(async (tx) => {
-      // 2. Simpan setiap jawaban user ke tabel UserExamAnswers
+      let totalScore = 0;
+      const subjectScores: Record<string, number> = {}; // Objek penampung skor per subjek
+
       for (const ans of answers) {
+        const question = await tx.questions.findUnique({
+          where: { id: ans.questionId },
+          include: { subject: true } // Ambil nama subjeknya (TWK/TIU/TKP)
+        });
+
         const correctOption = await tx.answers.findFirst({
           where: { questionId: ans.questionId, isCorrect: true }
         });
 
         const isCorrect = correctOption?.id === ans.selectedAnswerId;
-        
-        // Ambil poin dari relasi ExamQuestions
         const examQuestion = await tx.examQuestions.findFirst({
           where: { examId: attempt.examId, questionId: ans.questionId }
         });
 
         const points = Number(examQuestion?.pointsForQuestion || 0);
-        if (isCorrect) totalScore += points;
+        const subjectName = question?.subject?.subjectName || 'Umum';
+
+        if (isCorrect) {
+          totalScore += points;
+          subjectScores[subjectName] = (subjectScores[subjectName] || 0) + points;
+        } else {
+          subjectScores[subjectName] = subjectScores[subjectName] || 0;
+        }
 
         await tx.userExamAnswers.create({
           data: {
@@ -961,21 +964,57 @@ export class ExamsService {
         });
       }
 
-      // 3. Update status ujian jadi 'submitted' dan simpan skor akhir
-      const updatedAttempt = await tx.userExams.update({
+      // Simpan analisis subjek ke dalam metadataJson
+      return tx.userExams.update({
         where: { id: userExamId },
         data: {
           status: 'submitted',
           endTime: new Date(),
-          score: totalScore
+          score: totalScore,
+          metadataJson: {
+            analysisPerSubject: subjectScores // Contoh: { "TIU": 80, "TWK": 95 }
+          }
         }
       });
+    });
+  }
+
+  async monitorActiveAttempts() {
+    const activeAttempts = await this.prisma.userExams.findMany({
+      where: { status: 'in_progress' }, //
+      include: {
+        user: { select: { firstName: true, email: true } },
+        exam: { select: { examName: true, durationMinutes: true } }
+      },
+      orderBy: { startTime: 'desc' }
+    });
+
+    return activeAttempts.map(attempt => {
+      const now = new Date().getTime();
+      const deadline = attempt.startTime.getTime() + (attempt.exam.durationMinutes * 60000);
+      const remainingSeconds = Math.max(0, Math.floor((deadline - now) / 1000));
 
       return {
-        message: "Ujian berhasil dikumpulkan",
-        finalScore: totalScore,
-        attemptId: updatedAttempt.id
+        ...attempt,
+        remainingTime: `${Math.floor(remainingSeconds / 60)}m ${remainingSeconds % 60}s`,
+        isExpired: remainingSeconds <= 0
       };
+    });
+  }
+
+  async createVoucher(data: any) {
+    return this.prisma.coupons.create({
+      data: {
+        couponCode: data.couponCode,
+        discountType: data.discountType, // 'percentage' atau 'fixed'
+        discountValue: new Prisma.Decimal(data.discountValue),
+        validFrom: new Date(data.validFrom),
+        validUntil: new Date(data.validUntil),
+        maxUses: data.maxUses,
+        isActive: true,
+        appliesToEntityType: 'exam', // Default buat launching lo[cite: 5]
+        appliesToEntityIds: data.examIds || [], // Array ID exam yang boleh pake voucher ini[cite: 5]
+      }
     });
   }
 

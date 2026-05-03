@@ -168,23 +168,47 @@ export class StudentsService {
     };
     }
 
-    async getLeaderboard(examId: number) {
-        return this.prisma.userExams.findMany({
-            where: { 
-            examId, 
-            status: 'submitted' 
-            },
-            take: 10,
-            orderBy: { score: 'desc' },
-            select: {
-            score: true,
-            startTime: true,
-            endTime: true,
-            user: {
-                select: { username: true, firstName: true }
-            }
-            }
+    async getLeaderboard(examId: number, userId: number) {
+      // 1. Ambil Top 10 seperti biasa
+      const topTen = await this.prisma.userExams.findMany({
+        where: { examId, status: 'submitted' },
+        take: 10,
+        orderBy: { score: 'desc' },
+        select: {
+          score: true,
+          user: { select: { username: true, firstName: true } }
+        }
+      });
+
+      // 2. Hitung total peserta
+      const totalParticipants = await this.prisma.userExams.count({
+        where: { examId, status: 'submitted' }
+      });
+
+      // 3. Cari peringkat user saat ini
+      const userAttempt = await this.prisma.userExams.findFirst({
+        where: { examId, userId, status: 'submitted' },
+        orderBy: { score: 'desc' }
+      });
+
+      let myRank: number | null = null;
+      if (userAttempt && userAttempt.score !== null) {
+        const higherScores = await this.prisma.userExams.count({
+          where: {
+            examId,
+            status: 'submitted',
+            score: { gt: userAttempt.score } // Hitung berapa orang yang skornya lebih tinggi
+          }
         });
+        myRank = higherScores + 1;
+      }
+
+      return {
+        topTen,
+        totalParticipants,
+        myRank,
+        myScore: userAttempt?.score || 0
+      };
     }
 
     async updateProfile(userId: number, data: UpdateProfileDto) {

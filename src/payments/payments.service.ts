@@ -112,13 +112,53 @@ export class PaymentsService {
     return await this.prisma.$transaction(async (tx) => {
       const order = await tx.orders.update({
         where: { id: orderId },
-        data: { orderStatus: 'completed', paymentStatus: 'paid' }
+        data: { orderStatus: 'completed', paymentStatus: 'paid' },
+        include: { orderItems: true } // Ambil info barang yang dibeli
       });
+
       await tx.payments.updateMany({
         where: { orderId: order.id },
         data: { paymentStatus: 'completed' }
       });
+
+      // TRIGGER NOTIFIKASI
+      const itemName = order.orderItems[0]?.itemName || 'Paket Ujian';
+      await tx.notifications.create({
+        data: {
+          userId: order.userId,
+          notificationType: 'payment_approved',
+          title: 'Pembayaran Diterima!',
+          message: `Hore! Pembayaran untuk ${itemName} sudah diverifikasi. Silakan cek menu TryOut Saya untuk memulai.`,
+          isRead: false,
+          metadataJson: { orderId: order.id }
+        }
+      });
+
       return { message: `Order #${orderId} berhasil diverifikasi.` };
+    });
+  }
+
+  async approveBulkPayments(orderIds: number[]) {
+    return await this.prisma.$transaction(async (tx) => {
+      // 1. Update status di tabel Orders
+      await tx.orders.updateMany({
+        where: { id: { in: orderIds } },
+        data: { 
+          orderStatus: 'completed', 
+          paymentStatus: 'paid' 
+        },
+      });
+
+      // 2. Update status di tabel Payments
+      await tx.payments.updateMany({
+        where: { orderId: { in: orderIds } },
+        data: { paymentStatus: 'completed' },
+      });
+
+      return { 
+        success: true, 
+        message: `${orderIds.length} pembayaran berhasil disetujui sekaligus.` 
+      };
     });
   }
 }

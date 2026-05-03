@@ -36,4 +36,11 @@ export class PaymentsController {
   async verify(@Param('orderId') orderId: string) {
     return this.paymentsService.approveManualPayment(+orderId);
   }
+
+  @Patch('verify-bulk')
+  @Roles('3') // Admin Only[cite: 9]
+  async verifyBulk(@Body('orderIds') orderIds: number[]) {
+    return this.paymentsService.approveBulkPayments(orderIds);
+  }
+
 }
