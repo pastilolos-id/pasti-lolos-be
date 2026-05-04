@@ -4,12 +4,28 @@ import { AuthGuard } from '@nestjs/passport';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CertificatesService } from './certificates.service';
 import type { Response } from 'express';
+import { Roles } from 'src/common/decorators/roles.decorators';
+
+interface RequestWithUser extends Express.Request {
+  user: {
+    userId: number;
+    id?: number;
+    sub?: number;
+    email?: string;
+    roles?: string[];
+  };
+}
 
 @Controller('students')
 @UseGuards(AuthGuard('jwt'))
 export class StudentsController {
   constructor(private readonly studentsService: StudentsService, private readonly certificatesService: CertificatesService) {}
 
+  @Get('dashboard')
+  @Roles('1') // Hanya untuk role Student
+  async getDashboard(@Req() req: RequestWithUser) {
+    return this.studentsService.getDashboardData(req.user.userId);
+  }
   @Get('dashboard/exams')
   async getMyExams(@Req() req: any) {
     return this.studentsService.getMyExams(req.user.id);
@@ -32,8 +48,8 @@ export class StudentsController {
   }
 
   @Get('exams/:id/leaderboard')
-    async getLeaderboard(@Param('id', ParseIntPipe) id: number) {
-    return this.studentsService.getLeaderboard(id);
+    async getLeaderboard(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.studentsService.getLeaderboard(id, req.user.id);
   }
 
   @Patch('profile')

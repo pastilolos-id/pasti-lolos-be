@@ -5,6 +5,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
   Req,
   UseInterceptors,
@@ -71,8 +72,8 @@ export class ExamsController {
 
   @Get('get-all')
   @Roles('1', '2', '3') // Murid, Admin, Guru tetep bisa akses list ini
-  findAllPublished() {
-    return this.examsService.findAllPublished();
+  findAllPublished(@Query('category') category?: string) { // Ubah di sini
+    return this.examsService.findAllPublished(category);
   }
 
   @Get('get/:id')

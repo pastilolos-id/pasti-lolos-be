@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExamDto } from './dto/create-exam.dto';
@@ -126,21 +127,69 @@ export class ExamsService {
   }
 
   // --- GET EXAM PUBLISHING ---
-  async findAllPublished() {
-    return this.prisma.exams.findMany({
-      where: {
-        status: 'published',
+  async findAllPublished(subjectName?: string, page: number = 1, limit: number = 10) {
+    // 1. Validasi: Gak boleh get-all tanpa kategori
+    if (!subjectName) {
+      throw new BadRequestException('Kategori (BUMN/CPNS) harus dipilih!');
+    }
+
+    // 2. Validasi Limit: Cuma boleh 10, 30, atau 50
+    const allowedLimits = [10, 30, 50];
+    const safeLimit = allowedLimits.includes(Number(limit)) ? Number(limit) : 10;
+    
+    // 3. Hitung Skip (Offset)
+    const skip = (Number(page) - 1) * safeLimit;
+
+    // 4. Query ke Prisma
+    const [data, total] = await Promise.all([
+      this.prisma.exams.findMany({
+        where: {
+          status: 'published',
+          subject: {
+            subjectName: {
+              equals: subjectName,
+              mode: 'insensitive',
+            },
+          },
+        },
+        take: safeLimit,
+        skip: skip,
+        select: {
+          id: true,
+          examName: true,
+          description: true,
+          examType: true,
+          subject: {
+            select: {
+              subjectName: true,
+            },
+          },
+          _count: {
+            select: { examQuestions: true },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      // Hitung total data untuk info pagination di FE
+      this.prisma.exams.count({
+        where: {
+          status: 'published',
+          subject: { subjectName: { equals: subjectName, mode: 'insensitive' } },
+        },
+      }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page: Number(page),
+        lastPage: Math.ceil(total / safeLimit),
+        limit: safeLimit,
       },
-      include: {
-        subject: true, // Biar dapet info ini ujian BUMN, CPNS, dll
-        _count: {
-          select: { examQuestions: true } // Biar tau jumlah soalnya
-        }
-      },
-      orderBy: {
-        createdAt: 'desc', // Ujian terbaru muncul paling atas
-      },
-    });
+    };
   }
 
   // Get Exam Lengkap (Exams -> ExamQuestions -> Questions -> Answers)
@@ -381,6 +430,27 @@ export class ExamsService {
 
   // --- Mekanisme Ujian (User Exam Attempt) ---
   async startExam(examId: number, userId: number) {
+    // Gunakan findFirst dengan status yang masih aktif[cite: 5]
+    const activeAttempt = await this.prisma.userExams.findFirst({
+      where: {
+        userId,
+        examId,
+        status: 'in_progress'
+      }
+    });
+    if (activeAttempt) {
+      // Bukannya bikin baru, arahkan user balik ke ujian yang sudah ada
+      return activeAttempt; 
+    }
+
+    // Cek apakah user sudah pernah submit (biar nggak ujian berkali-kali kalau aturannya cuma boleh 1x)
+    const completedAttempt = await this.prisma.userExams.findFirst({
+      where: { userId, examId, status: 'submitted' }
+    });
+
+    if (completedAttempt) {
+      throw new BadRequestException('Lo udah nyelesein ujian ini, Bal.');
+    }
     // Gunakan transaction untuk memastikan pengecekan kuota aman dari race condition
     return this.prisma.$transaction(async (tx) => {
       const hasAccess = await tx.orders.findFirst({
@@ -1016,6 +1086,39 @@ export class ExamsService {
         appliesToEntityIds: data.examIds || [], // Array ID exam yang boleh pake voucher ini[cite: 5]
       }
     });
+  }
+
+  async autoSubmitExpiredExams() {
+    const now = new Date();
+
+    // Cari semua attempt yang statusnya in_progress tapi sudah lewat deadline
+    // deadline = startTime + durationMinutes
+    const expiredExams = await this.prisma.userExams.findMany({
+      where: {
+        status: 'in_progress',
+      },
+      include: { exam: true }
+    });
+
+    const toSubmit = expiredExams.filter(attempt => {
+      const deadline = new Date(attempt.startTime.getTime() + attempt.exam.durationMinutes * 60000);
+      return now > deadline;
+    });
+
+    // Proses bulk update status ke 'submitted'
+    if (toSubmit.length > 0) {
+      const ids = toSubmit.map(a => a.id);
+      await this.prisma.userExams.updateMany({
+        where: { id: { in: ids } },
+        data: { 
+          status: 'submitted',
+          endTime: now,
+          // Skor tetap dihitung berdasarkan jawaban yang sempat tersimpan[cite: 5]
+        }
+      });
+    }
+    
+    return { processed: toSubmit.length };
   }
 
 }

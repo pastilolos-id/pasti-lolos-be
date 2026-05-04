@@ -94,7 +94,17 @@ export class AuthController {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    return res.redirect(`http://localhost:3000/login`);
+    // return res.redirect(`http://localhost:3000/login`);
+    return res.send(`
+  <html>
+    <body style="font-family: sans-serif; padding: 50px;">
+      <h2>Google Auth Success!</h2>
+      <p>Data ini yang dikirim balik sama server setelah validasi:</p>
+      <pre style="background: #eee; padding: 20px;">${JSON.stringify(result, null, 2)}</pre>
+      <a href="http://localhost:3000/login">Lanjut ke Frontend</a>
+    </body>
+  </html>
+`);
   }
 
   @Post('logout')

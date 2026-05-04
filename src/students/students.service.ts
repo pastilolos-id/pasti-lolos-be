@@ -2,9 +2,54 @@ import { ForbiddenException, Injectable, NotFoundException, BadRequestException 
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
+type LeaderboardResult = {
+  topTen: Array<{
+    score: number | null;
+    user: { username: string; firstName: string | null };
+  }>;
+  totalParticipants: number;
+  myRank: number | null;
+  myScore: number;
+};
+
 @Injectable()
 export class StudentsService {
   constructor(private prisma: PrismaService) {}
+
+  async getDashboardData(userId: number) {
+    // 1. Ambil data profil & statistik dasar
+    const stats = await this.getStudentStats(userId);
+    const profile = await this.getProfileStats(userId);
+
+    // 2. Ambil ujian yang sudah dibeli (Limit 3 saja untuk dashboard)
+    const purchasedExams = await this.getMyExams(userId);
+    
+    // 3. Ambil 1 ujian terakhir untuk info leaderboard singkat
+    const lastAttempt = stats.recentAttempts[0];
+    let miniLeaderboard: LeaderboardResult | null = null;
+
+    if (lastAttempt) {
+      miniLeaderboard = await this.getLeaderboard(lastAttempt.examId, userId);
+    }
+
+    return {
+      welcome: {
+        name: profile.profile.firstName || profile.profile.username,
+        avatar: profile.profile.profilePictureUrl
+      },
+      summaryCards: {
+        totalTaken: stats.totalExamsTaken,
+        avgScore: stats.averageScore,
+      },
+      recentActivity: stats.recentAttempts,
+      myExamsShortcut: purchasedExams.data.slice(0, 3), // Ambil 3 ujian terbaru yang dibeli
+      lastExamRank: miniLeaderboard ? {
+          examName: lastAttempt.exam.examName,
+          rank: miniLeaderboard.myRank,
+          totalParticipants: miniLeaderboard.totalParticipants
+      } : null
+    };
+  }
 
   // 1. Fitur "Ujian Saya" (Purchased Exams)
   async getMyExams(userId: number) {
@@ -168,7 +213,7 @@ export class StudentsService {
     };
     }
 
-    async getLeaderboard(examId: number, userId: number) {
+    async getLeaderboard(examId: number, userId: number): Promise<LeaderboardResult> {
       // 1. Ambil Top 10 seperti biasa
       const topTen = await this.prisma.userExams.findMany({
         where: { examId, status: 'submitted' },
@@ -204,10 +249,13 @@ export class StudentsService {
       }
 
       return {
-        topTen,
+        topTen: topTen.map((item) => ({
+          score: item.score !== null ? Number(item.score) : null,
+          user: item.user,
+        })),
         totalParticipants,
         myRank,
-        myScore: userAttempt?.score || 0
+        myScore: userAttempt?.score ? Number(userAttempt.score) : 0
       };
     }
 

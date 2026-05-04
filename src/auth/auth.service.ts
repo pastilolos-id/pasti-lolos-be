@@ -14,7 +14,7 @@ interface GoogleUserPayload {
   email: string;
   firstName: string;
   lastName: string;
-  picture?: string; // Tanda tanya (?) berarti opsional
+  profilePictureUrl?: string; // Tanda tanya (?) berarti opsional
 }
 interface AuthResult {
   accessToken: string;
@@ -83,6 +83,7 @@ export class AuthService {
         email: user.email,
         username: user.username,
         userRoleId: user.userRoleId,
+        profilePictureUrl: user.profilePictureUrl,
       });
     }
     throw new UnauthorizedException('Email atau password salah');
@@ -106,7 +107,7 @@ export class AuthService {
           passwordHash: '',
           firstName: googleUser.firstName,
           lastName: googleUser.lastName,
-          profilePictureUrl: googleUser.picture || null, // Handle jika foto tidak ada
+          profilePictureUrl: googleUser.profilePictureUrl || null, // Handle jika foto tidak ada
           userRoleId: 1,
           status: 'active',
         },
@@ -117,6 +118,7 @@ export class AuthService {
       email: user.email,
       username: user.username,
       userRoleId: user.userRoleId,
+      profilePictureUrl: user.profilePictureUrl,
     });
   }
 

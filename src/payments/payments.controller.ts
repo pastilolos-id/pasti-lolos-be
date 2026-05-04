@@ -43,4 +43,22 @@ export class PaymentsController {
     return this.paymentsService.approveBulkPayments(orderIds);
   }
 
+  @Post('upload-proof')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: {
+      fileSize: 2 * 1024 * 1024, // Batas 2MB[cite: 6]
+    },
+    fileFilter: (req, file, callback) => {
+      // Cuma terima gambar[cite: 6]
+      if (!file.mimetype.match(/\/(jpg|jpeg|png)$/)) {
+        return callback(new BadRequestException('Cuma boleh upload JPG, JPEG, atau PNG!'), false);
+      }
+      callback(null, true);
+    },
+  }))
+  async uploadProof(@UploadedFile() file: Express.Multer.File, @Body('orderId') orderId: string) {
+    if (!file) throw new BadRequestException('File-nya mana?');
+    
+    // Lanjut proses upload ke Cloudinary...[cite: 6, 9]
+  }
 }
