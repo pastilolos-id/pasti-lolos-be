@@ -18,7 +18,6 @@ export class PaymentsService {
     file: Express.Multer.File,
     discountCode?: string,
   ) {
-    // 1. Cari data Exam
     const exam = await this.prisma.exams.findUnique({ where: { id: examId } });
     if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
@@ -26,27 +25,15 @@ export class PaymentsService {
     let discountAmount = new Prisma.Decimal(0);
     let couponId: number | null = null;
 
-    // 2. LOGIC DISKON SPESIFIK EXAM
+    // 1. Logic Diskon
     if (discountCode) {
-      const coupon = await this.prisma.coupons.findUnique({
-        where: { couponCode: discountCode },
-      });
+      const coupon = await this.prisma.coupons.findUnique({ where: { couponCode: discountCode } });
       const now = new Date();
+      const isValid = coupon && coupon.isActive && now >= coupon.validFrom && now <= coupon.validUntil &&
+                      (coupon.maxUses === null || (coupon.usesCount ?? 0) < coupon.maxUses);
 
-      const isValidBasic = coupon && coupon.isActive && now >= coupon.validFrom && now <= coupon.validUntil &&
-                           (coupon.maxUses === null || (coupon.usesCount ?? 0) < coupon.maxUses);
-
-      if (!isValidBasic) throw new BadRequestException('Kupon tidak valid atau kadaluarsa');
-
-      if (coupon.appliesToEntityType && coupon.appliesToEntityType !== 'exam') {
-        throw new BadRequestException('Kupon ini hanya berlaku untuk ujian.');
-      }
-
-      if (coupon.appliesToEntityIds) {
-        const allowedIds = coupon.appliesToEntityIds as number[];
-        if (!allowedIds.includes(examId)) throw new BadRequestException('Kupon tidak berlaku untuk paket ujian ini.');
-      }
-
+      if (!isValid) throw new BadRequestException('Kupon tidak valid atau kadaluarsa');
+      
       couponId = coupon.id;
       discountAmount = coupon.discountType === 'percentage' 
         ? totalAmount.mul(Number(coupon.discountValue) / 100) 
@@ -55,7 +42,7 @@ export class PaymentsService {
 
     const grandTotal = Prisma.Decimal.max(totalAmount.sub(discountAmount), 0);
 
-    // 3. EKSEKUSI TRANSAKSI
+    // 2. Transaksi Database
     return await this.prisma.$transaction(async (tx) => {
       const order = await tx.orders.create({
         data: {
@@ -85,6 +72,7 @@ export class PaymentsService {
         await tx.coupons.update({ where: { id: couponId }, data: { usesCount: { increment: 1 } } });
       }
 
+      // Upload bukti transfer ke Cloudinary
       const upload = await this.cloudinary.uploadFile(file, 'exam_payment_proofs');
 
       await tx.payments.create({
@@ -100,20 +88,20 @@ export class PaymentsService {
       });
 
       return {
-        message: 'Pembayaran ujian berhasil diupload. Tunggu verifikasi admin.',
+        message: 'Pembayaran berhasil diupload. Tunggu verifikasi admin.',
         orderId: order.id,
         grandTotal,
       };
     });
   }
 
-  // FUNGSI APPROVE (Bisa dipakai keduanya)
+  // Fungsi Approve oleh Admin[cite: 5]
   async approveManualPayment(orderId: number) {
     return await this.prisma.$transaction(async (tx) => {
       const order = await tx.orders.update({
         where: { id: orderId },
         data: { orderStatus: 'completed', paymentStatus: 'paid' },
-        include: { orderItems: true } // Ambil info barang yang dibeli
+        include: { orderItems: true }
       });
 
       await tx.payments.updateMany({
@@ -121,20 +109,31 @@ export class PaymentsService {
         data: { paymentStatus: 'completed' }
       });
 
-      // TRIGGER NOTIFIKASI
-      const itemName = order.orderItems[0]?.itemName || 'Paket Ujian';
+      // --- AUTO ENROLL LOGIC ---
+      const examId = order.orderItems[0].itemId;
+      const subExams = await tx.exams.findMany({ where: { packageId: examId } });
+      const allExams = [{ id: examId }, ...subExams];
+
+      await tx.userExams.createMany({
+        data: allExams.map(e => ({
+          userId: order.userId,
+          examId: e.id,
+          status: 'not_started',
+        })),
+        skipDuplicates: true,
+      });
+
+      // Kirim Notifikasi[cite: 5]
       await tx.notifications.create({
         data: {
           userId: order.userId,
           notificationType: 'payment_approved',
-          title: 'Pembayaran Diterima!',
-          message: `Hore! Pembayaran untuk ${itemName} sudah diverifikasi. Silakan cek menu TryOut Saya untuk memulai.`,
-          isRead: false,
-          metadataJson: { orderId: order.id }
+          title: 'Akses Ujian Terbuka!',
+          message: `Pembayaran untuk ${order.orderItems[0].itemName} berhasil. Selamat belajar!`,
         }
       });
 
-      return { message: `Order #${orderId} berhasil diverifikasi.` };
+      return { message: `Order #${orderId} berhasil diverifikasi dan akses dibuka.` };
     });
   }
 

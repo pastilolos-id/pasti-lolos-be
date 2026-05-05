@@ -32,55 +32,52 @@ export class ExamsService {
   ) {}
 
   // --- CRUD EXAMS ---
-  async createExam(data: CreateExamDto, userId: number): Promise<Exams> {
-    // Validasi dasar userId
+  async createExam(data: CreateExamDto, userId: number): Promise<{ message: string }> {
     if (!userId) {
       throw new BadRequestException('User ID tidak valid');
     }
 
-    return this.prisma.exams.create({
+    const parsedPackageId = data.packageId 
+      ? parseInt(data.packageId.toString(), 10) 
+      : null;
+
+    const packageIdFinal = parsedPackageId && !isNaN(parsedPackageId) 
+      ? parsedPackageId 
+      : null;
+
+    await this.prisma.exams.create({
       data: {
         examName: data.examName,
         description: data.description ?? null,
-        durationMinutes: parseInt(data.durationMinutes, 10),
+        durationMinutes: parseInt(data.durationMinutes.toString(), 10),
         examType: data.examType,
         status: data.status ?? 'draft',
-        // Handling DateTime
+        packageId: packageIdFinal,
+        subjectId: parseInt(data.subjectId.toString(), 10),
+        createdByUserId: userId,
         startTime: data.startTime ? new Date(data.startTime) : null,
         endTime: data.endTime ? new Date(data.endTime) : null,
-
-        // Handling Decimal (Prisma.Decimal)
         passingScore: data.passingScore
           ? new Prisma.Decimal(data.passingScore)
           : null,
         price: data.price
           ? new Prisma.Decimal(data.price)
           : new Prisma.Decimal(0),
-
-        // Handling Int
         attemptsAllowed: data.attemptsAllowed
-          ? parseInt(data.attemptsAllowed, 10)
+          ? parseInt(data.attemptsAllowed.toString(), 10)
           : 1,
-        // Handling Boolean (Default di DB sudah ada, tapi ini buat jaga-jaga)
         randomizeQuestions: data.randomizeQuestions ?? true,
-
-        // Relasi 1: Subject (BUMN/CPNS)
-        subject: {
-          connect: { id: parseInt(data.subjectId, 10) },
-        },
-
-        // Relasi 2: Creator
-        createdByUser: {
-          connect: { id: userId },
-        },
-
-        // Metadata JSON (Type-safe casting)
         metadataJson: {
           source: 'admin_panel',
           created_at_iso: new Date().toISOString(),
+          ...(data.metadataJson as object || {}),
         } as Prisma.InputJsonValue,
       },
     });
+
+    return {
+      message: 'Berhasil insert data exam',
+    };
   }
 
   async updateExam(id: number, userId: number, data: Partial<CreateExamDto>) {
@@ -94,7 +91,9 @@ export class ExamsService {
       data: {
         examName: data.examName,
         description: data.description,
-        durationMinutes: data.durationMinutes ? parseInt(data.durationMinutes, 10) : undefined,
+        durationMinutes: data.durationMinutes 
+        ? parseInt(data.durationMinutes.toString(), 10) 
+        : undefined,
         examType: data.examType,
         status: data.status, // Bisa buat ganti status manual
         startTime: data.startTime ? new Date(data.startTime) : undefined,
@@ -128,23 +127,20 @@ export class ExamsService {
 
   // --- GET EXAM PUBLISHING ---
   async findAllPublished(subjectName?: string, page: number = 1, limit: number = 10) {
-    // 1. Validasi: Gak boleh get-all tanpa kategori
+    // 1. Validasi: Kategori harus ada
     if (!subjectName) {
       throw new BadRequestException('Kategori (BUMN/CPNS) harus dipilih!');
     }
 
-    // 2. Validasi Limit: Cuma boleh 10, 30, atau 50
-    const allowedLimits = [10, 30, 50];
-    const safeLimit = allowedLimits.includes(Number(limit)) ? Number(limit) : 10;
-    
-    // 3. Hitung Skip (Offset)
+    const safeLimit = [10, 30, 50].includes(Number(limit)) ? Number(limit) : 10;
     const skip = (Number(page) - 1) * safeLimit;
 
-    // 4. Query ke Prisma
+    // 2. Query ke Prisma dengan filter packageId: null
     const [data, total] = await Promise.all([
       this.prisma.exams.findMany({
         where: {
           status: 'published',
+          packageId: null, // <--- KUNCINYA DI SINI, BAL! Biar cuma Paket Utama yang muncul
           subject: {
             subjectName: {
               equals: subjectName,
@@ -159,10 +155,10 @@ export class ExamsService {
           examName: true,
           description: true,
           examType: true,
+          price: true, // Pastikan harga ditarik buat ditampilin di card
+          durationMinutes: true,
           subject: {
-            select: {
-              subjectName: true,
-            },
+            select: { subjectName: true },
           },
           _count: {
             select: { examQuestions: true },
@@ -172,10 +168,10 @@ export class ExamsService {
           createdAt: 'desc',
         },
       }),
-      // Hitung total data untuk info pagination di FE
       this.prisma.exams.count({
         where: {
           status: 'published',
+          packageId: null, // Hitung juga cuma yang Paket Utama
           subject: { subjectName: { equals: subjectName, mode: 'insensitive' } },
         },
       }),
@@ -189,6 +185,54 @@ export class ExamsService {
         lastPage: Math.ceil(total / safeLimit),
         limit: safeLimit,
       },
+    };
+  }
+
+  async getPackageDetail(examId: number) {
+    // 1. Ambil data Paket Utama
+    const parentExam = await this.prisma.exams.findUnique({
+      where: { id: examId },
+      include: {
+        subject: true,
+        _count: { select: { examQuestions: true } },
+      },
+    });
+
+    if (!parentExam) throw new NotFoundException('Paket ujian tidak ditemukan');
+
+    // 2. Ambil daftar Sub-Ujian (Anak) yang merujuk ke ID ini
+    const children = await this.prisma.exams.findMany({
+      where: { 
+        packageId: examId,
+        status: 'published' 
+      },
+      select: {
+        id: true,
+        examName: true,
+        durationMinutes: true,
+        passingScore: true,
+        _count: { select: { examQuestions: true } },
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    // 3. Gabungkan data sesuai kebutuhan UI lo
+    return {
+      id: parentExam.id,
+      examName: parentExam.examName,
+      description: parentExam.description,
+      price: parentExam.price,
+      totalDuration: parentExam.durationMinutes,
+      totalQuestions: parentExam._count.examQuestions,
+      subject: parentExam.subject?.subjectName,
+      // Ini list sub-ujian buat list di bawah (TWK, TIU, TKP)
+      subExams: children.map(child => ({
+        id: child.id,
+        name: child.examName,
+        totalSoal: child._count.examQuestions,
+        passingGrade: child.passingScore,
+        duration: child.durationMinutes
+      }))
     };
   }
 
@@ -695,22 +739,32 @@ export class ExamsService {
 
   // checkout exam
   async getExamCheckoutPreview(examId: number) {
+    // 1. Cari data paket yang mau dibeli
     const exam = await this.prisma.exams.findUnique({
       where: { id: examId },
       include: {
         subject: true,
-        _count: { select: { examQuestions: true } }, // Biar tau ada berapa soal
+        // Ambil sub-ujiannya buat informasi tambahan di struk checkout
+        subExams: {
+          where: { status: 'published' },
+          select: { examName: true }
+        }
       },
     });
-    if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
+    if (!exam) throw new NotFoundException('Paket ujian tidak ditemukan');
+
+    // 2. Return data ringkas untuk kebutuhan Checkout
     return {
       examId: exam.id,
-      title: exam.examName,
+      examName: exam.examName,
+      category: exam.subject?.subjectName,
       price: exam.price,
-      duration: exam.durationMinutes,
-      totalQuestions: exam._count.examQuestions,
-      subjectName: exam.subject?.subjectName,
+      // List sub-tes (misal buat ditaruh di bwh nama paket di struk)
+      includedSubExams: exam.subExams.map(c => c.examName),
+      // Lo bisa tambahin biaya admin atau diskon di sini nanti kalau ada logic-nya
+      adminFee: 0, 
+      totalPayment: exam.price 
     };
   }
 
@@ -721,7 +775,7 @@ export class ExamsService {
     file: Express.Multer.File,
     discountCode?: string,
   ) {
-    // 1. Cari data Exam
+    // 1. Cari data Exam Utama
     const exam = await this.prisma.exams.findUnique({ where: { id: examId } });
     if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
@@ -736,8 +790,6 @@ export class ExamsService {
       });
 
       const now = new Date();
-
-      // Validasi Dasar (Aktif, Tanggal, & Kuota)
       const isValidBasic =
         coupon &&
         coupon.isActive &&
@@ -746,30 +798,20 @@ export class ExamsService {
         (coupon.maxUses === null || (coupon.usesCount ?? 0) < coupon.maxUses);
 
       if (!isValidBasic) {
-        throw new BadRequestException(
-          'Kupon tidak valid atau sudah kadaluarsa',
-        );
+        throw new BadRequestException('Kupon tidak valid atau sudah kadaluarsa');
       }
 
-      // --- VALIDASI ENTITAS (Khusus Exam) ---
-      // Cek apakah kupon ini memang untuk 'exam'
       if (coupon.appliesToEntityType && coupon.appliesToEntityType !== 'exam') {
-        throw new BadRequestException(
-          'Kupon ini hanya berlaku untuk kursus, bukan ujian.',
-        );
+        throw new BadRequestException('Kupon ini hanya berlaku untuk kursus.');
       }
 
-      // Cek apakah kupon ini spesifik untuk ID tertentu (jika field appliesToEntityIds diisi)
       if (coupon.appliesToEntityIds) {
         const allowedIds = coupon.appliesToEntityIds as number[];
         if (!allowedIds.includes(examId)) {
-          throw new BadRequestException(
-            'Kupon tidak berlaku untuk paket ujian ini.',
-          );
+          throw new BadRequestException('Kupon tidak berlaku untuk paket ini.');
         }
       }
 
-      // Hitung Diskon
       couponId = coupon.id;
       if (coupon.discountType === 'percentage') {
         discountAmount = totalAmount.mul(Number(coupon.discountValue) / 100);
@@ -779,10 +821,11 @@ export class ExamsService {
     }
 
     const grandTotal = Prisma.Decimal.max(totalAmount.sub(discountAmount), 0);
+    const isFree = grandTotal.toNumber() === 0; // Cek apakah gratis[cite: 9]
 
-    // 3. EKSEKUSI TRANSAKSI
+    // 3. EKSEKUSI TRANSAKSI[cite: 9]
     return await this.prisma.$transaction(async (tx) => {
-      // A. Buat Order
+      // A. Buat Order (Status otomatis completed kalau gratis)[cite: 9]
       const order = await tx.orders.create({
         data: {
           userId: userId,
@@ -790,8 +833,8 @@ export class ExamsService {
           discountAmount: discountAmount,
           grandTotal: grandTotal,
           couponCode: discountCode || null,
-          orderStatus: 'pending',
-          paymentStatus: 'pending',
+          orderStatus: isFree ? 'completed' : 'pending',
+          paymentStatus: isFree ? 'paid' : 'pending',
           paymentMethod: paymentMethod,
           orderItems: {
             create: [
@@ -801,7 +844,7 @@ export class ExamsService {
                 itemName: exam.examName,
                 pricePerItem: totalAmount,
                 totalPrice: grandTotal,
-                courseId: 0, // Sesuai schema lo yang minta Int
+                courseId: 0,
                 metadataJson: { examId: examId } as Prisma.JsonObject,
               },
             ],
@@ -809,7 +852,26 @@ export class ExamsService {
         },
       });
 
-      // B. Update kuota kupon jika dipakai
+      // B. LOGIC AUTO-ENROLL PAKET (Ini yang lo butuhin, Bal)
+      // Cari semua sub-ujian yang merujuk ke paket ini
+      const subExams = await tx.exams.findMany({
+        where: { packageId: examId }
+      });
+
+      // Gabungkan Exam Utama + Sub-Exams
+      const allExamsToEnroll = [exam, ...subExams];
+
+      // Daftarkan user ke semua ujian tersebut[cite: 9]
+      await tx.userExams.createMany({
+        data: allExamsToEnroll.map((item) => ({
+          userId: userId,
+          examId: item.id,
+          status: 'not_started' as any,
+        })),
+        skipDuplicates: true,
+      });
+
+      // C. Update kuota kupon[cite: 9]
       if (couponId) {
         await tx.coupons.update({
           where: { id: couponId },
@@ -817,32 +879,162 @@ export class ExamsService {
         });
       }
 
-      // C. Upload Bukti & Record Payment
-      const upload = await this.cloudinary.uploadFile(
-        file,
-        'exam_payment_proofs',
-      );
+      // D. Upload Bukti & Record Payment (Hanya jika tidak gratis)[cite: 9]
+      if (!isFree) {
+        const upload = await this.cloudinary.uploadFile(file, 'exam_payment_proofs');
 
-      await tx.payments.create({
-        data: {
-          orderId: order.id,
-          userId: userId,
-          amount: grandTotal,
-          paymentMethod: paymentMethod,
-          transactionId: `EXTX-${Date.now()}-${userId}`,
-          paymentStatus: 'pending',
-          receiptUrl: upload.secure_url,
-        },
-      });
+        await tx.payments.create({
+          data: {
+            orderId: order.id,
+            userId: userId,
+            amount: grandTotal,
+            paymentMethod: paymentMethod,
+            transactionId: `EXTX-${Date.now()}-${userId}`,
+            paymentStatus: 'pending',
+            receiptUrl: upload.secure_url,
+          },
+        });
+      }
 
       return {
-        message: 'Pembayaran ujian berhasil diupload. Tunggu verifikasi admin.',
+        message: isFree 
+          ? 'Paket berhasil diaktifkan!' 
+          : 'Pembayaran berhasil diupload. Tunggu verifikasi admin.',
         success: true,
         orderId: order.id,
         grandTotal: grandTotal,
       };
     });
   }
+  // async processExamCheckout(
+  //   examId: number,
+  //   userId: number,
+  //   paymentMethod: string,
+  //   file: Express.Multer.File,
+  //   discountCode?: string,
+  // ) {
+  //   // 1. Cari data Exam
+  //   const exam = await this.prisma.exams.findUnique({ where: { id: examId } });
+  //   if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
+
+  //   const totalAmount = exam.price ?? new Prisma.Decimal(0);
+  //   let discountAmount = new Prisma.Decimal(0);
+  //   let couponId: number | null = null;
+
+  //   // 2. LOGIC DISKON (Validasi & Perhitungan)
+  //   if (discountCode) {
+  //     const coupon = await this.prisma.coupons.findUnique({
+  //       where: { couponCode: discountCode },
+  //     });
+
+  //     const now = new Date();
+
+  //     // Validasi Dasar (Aktif, Tanggal, & Kuota)
+  //     const isValidBasic =
+  //       coupon &&
+  //       coupon.isActive &&
+  //       now >= coupon.validFrom &&
+  //       now <= coupon.validUntil &&
+  //       (coupon.maxUses === null || (coupon.usesCount ?? 0) < coupon.maxUses);
+
+  //     if (!isValidBasic) {
+  //       throw new BadRequestException(
+  //         'Kupon tidak valid atau sudah kadaluarsa',
+  //       );
+  //     }
+
+  //     // --- VALIDASI ENTITAS (Khusus Exam) ---
+  //     // Cek apakah kupon ini memang untuk 'exam'
+  //     if (coupon.appliesToEntityType && coupon.appliesToEntityType !== 'exam') {
+  //       throw new BadRequestException(
+  //         'Kupon ini hanya berlaku untuk kursus, bukan ujian.',
+  //       );
+  //     }
+
+  //     // Cek apakah kupon ini spesifik untuk ID tertentu (jika field appliesToEntityIds diisi)
+  //     if (coupon.appliesToEntityIds) {
+  //       const allowedIds = coupon.appliesToEntityIds as number[];
+  //       if (!allowedIds.includes(examId)) {
+  //         throw new BadRequestException(
+  //           'Kupon tidak berlaku untuk paket ujian ini.',
+  //         );
+  //       }
+  //     }
+
+  //     // Hitung Diskon
+  //     couponId = coupon.id;
+  //     if (coupon.discountType === 'percentage') {
+  //       discountAmount = totalAmount.mul(Number(coupon.discountValue) / 100);
+  //     } else {
+  //       discountAmount = new Prisma.Decimal(coupon.discountValue);
+  //     }
+  //   }
+
+  //   const grandTotal = Prisma.Decimal.max(totalAmount.sub(discountAmount), 0);
+
+  //   // 3. EKSEKUSI TRANSAKSI
+  //   return await this.prisma.$transaction(async (tx) => {
+  //     // A. Buat Order
+  //     const order = await tx.orders.create({
+  //       data: {
+  //         userId: userId,
+  //         totalAmount: totalAmount,
+  //         discountAmount: discountAmount,
+  //         grandTotal: grandTotal,
+  //         couponCode: discountCode || null,
+  //         orderStatus: 'pending',
+  //         paymentStatus: 'pending',
+  //         paymentMethod: paymentMethod,
+  //         orderItems: {
+  //           create: [
+  //             {
+  //               itemType: 'exam',
+  //               itemId: examId,
+  //               itemName: exam.examName,
+  //               pricePerItem: totalAmount,
+  //               totalPrice: grandTotal,
+  //               courseId: 0, // Sesuai schema lo yang minta Int
+  //               metadataJson: { examId: examId } as Prisma.JsonObject,
+  //             },
+  //           ],
+  //         },
+  //       },
+  //     });
+      
+  //     // B. Update kuota kupon jika dipakai
+  //     if (couponId) {
+  //       await tx.coupons.update({
+  //         where: { id: couponId },
+  //         data: { usesCount: { increment: 1 } },
+  //       });
+  //     }
+
+  //     // C. Upload Bukti & Record Payment
+  //     const upload = await this.cloudinary.uploadFile(
+  //       file,
+  //       'exam_payment_proofs',
+  //     );
+
+  //     await tx.payments.create({
+  //       data: {
+  //         orderId: order.id,
+  //         userId: userId,
+  //         amount: grandTotal,
+  //         paymentMethod: paymentMethod,
+  //         transactionId: `EXTX-${Date.now()}-${userId}`,
+  //         paymentStatus: 'pending',
+  //         receiptUrl: upload.secure_url,
+  //       },
+  //     });
+
+  //     return {
+  //       message: 'Pembayaran ujian berhasil diupload. Tunggu verifikasi admin.',
+  //       success: true,
+  //       orderId: order.id,
+  //       grandTotal: grandTotal,
+  //     };
+  //   });
+  // }
 
   async updateExamQuestion(id: number, data: any) {
     const existing = await this.prisma.examQuestions.findUnique({ where: { id } });

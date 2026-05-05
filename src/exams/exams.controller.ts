@@ -53,6 +53,12 @@ export class ExamsController {
     return this.examsService.createExam(body, req.user.userId);
   }
 
+  @Get('package-detail/:id')
+  @Roles('1', '2', '3')
+  async getPackageDetail(@Param('id') id: string) {
+    return this.examsService.getPackageDetail(+id);
+  }
+
   @Patch('update/:id')
   @Roles('2', '3') // Admin (3) & Kontributor (4)
   update(
@@ -224,6 +230,7 @@ export class ExamsController {
 
   // Di ExamsController
   @Get('checkout-preview/:id')
+  @Roles('1', '2', '3')
   async getCheckoutPreview(@Param('id') id: string) {
     return this.examsService.getExamCheckoutPreview(+id);
   }

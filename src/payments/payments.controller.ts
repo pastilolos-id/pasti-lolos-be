@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Req, UseInterceptors, UploadedFile, Param, Patch, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Req, UseInterceptors, UploadedFile, Param, Patch, BadRequestException, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -10,32 +10,35 @@ import { Roles } from '../common/decorators/roles.decorators';
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
-  // URL KHUSUS CHECKOUT EXAM
-  @Post('checkout/exam')
-  @UseInterceptors(FileInterceptor('file'))
-  async checkoutExam(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() body: any,
-    @Req() req: any,
-  ) {
-    if (!file) throw new BadRequestException('Bukti pembayaran wajib diunggah');
-    
-    return this.paymentsService.processExamManualPayment(
-      +body.examId,
-      req.user.userId,
-      body.paymentMethod,
-      file,
-      body.discountCode,
-    );
-  }
+    // URL KHUSUS CHECKOUT EXAM
+    @Post('checkout/exam')
+    @UseInterceptors(FileInterceptor('file'))
+    async checkoutExam(
+      @UploadedFile(
+        new ParseFilePipe({
+          validators: [
+            new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 }), // Batas 2MB
+            new FileTypeValidator({ fileType: '.(png|jpeg|jpg)' }), // Cuma gambar[cite: 6]
+          ],
+        }),
+      ) file: Express.Multer.File,
+      @Body() body: { examId: string; paymentMethod: string; discountCode?: string },
+      @Req() req: any,
+    ) {
+      return this.paymentsService.processExamManualPayment(
+        +body.examId,
+        req.user.userId,
+        body.paymentMethod,
+        file,
+        body.discountCode,
+      );
+    }
 
-  // Nanti lo tinggal tambahin @Post('checkout/course') di sini fungsinya beda lagi
-
-  @Patch('verify/:orderId')
-  @Roles('3') // Admin Only
-  async verify(@Param('orderId') orderId: string) {
-    return this.paymentsService.approveManualPayment(+orderId);
-  }
+    @Patch('verify/:orderId')
+    @Roles('3') // Cuma Admin yang bisa approve[cite: 6]
+    async verify(@Param('orderId') orderId: string) {
+      return this.paymentsService.approveManualPayment(+orderId);
+    }
 
   @Patch('verify-bulk')
   @Roles('3') // Admin Only[cite: 9]

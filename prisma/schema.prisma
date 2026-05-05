@@ -558,6 +558,9 @@ model Exams {
   examName               String          @map("exam_name") @db.VarChar(255)
   description            String?
   subjectId              Int             @map("subject_id")
+  packageId              Int?            @map("package_id")
+  parentPackage          Exams?          @relation("ExamToPackage", fields: [packageId], references: [id])
+  subExams               Exams[]         @relation("ExamToPackage")
   durationMinutes        Int             @map("duration_minutes")
   startTime              DateTime?       @map("start_time") @db.Timestamptz(6)
   endTime                DateTime?       @map("end_time") @db.Timestamptz(6)
