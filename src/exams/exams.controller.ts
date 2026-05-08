@@ -13,6 +13,7 @@ import {
   BadRequestException,
   ParseFilePipe,
   MaxFileSizeValidator,
+  UnauthorizedException,
   FileTypeValidator,
   Patch,
   Delete,
@@ -55,9 +56,12 @@ export class ExamsController {
 
   @Get('package-detail/:id')
   @Roles('1', '2', '3')
-  async getPackageDetail(@Param('id') id: string) {
-    return this.examsService.getPackageDetail(+id);
+    async getPackage(@Param('id') id: string, @Req() req: any) {
+    return this.examsService.getPackageDetail(+id, req.user.userId);
   }
+  // async getPackageDetail(@Param('id') id: string) {
+  //   return this.examsService.getPackageDetail(+id);
+  // }
 
   @Patch('update/:id')
   @Roles('2', '3') // Admin (3) & Kontributor (4)
@@ -76,8 +80,21 @@ export class ExamsController {
     return this.examsService.softDeleteExam(+id);
   }
 
-  @Get('get-all')
+  @Get('')
   @Roles('1', '2', '3') // Murid, Admin, Guru tetep bisa akses list ini
+  // async findAll(
+  //   @Query('category') subjectName: string,
+  //   @Query('page') page: string = '1',
+  //   @Query('limit') limit: string = '10',
+  //   @Req() req: any
+  // ) {
+  //   return this.examsService.findAllPublished(
+  //     subjectName, 
+  //     +page || 1, 
+  //     +limit || 10, 
+  //     req.user.userId // Ambil dari JWT payload
+  //   );
+  // }
   findAllPublished(@Query('category') category?: string) { // Ubah di sini
     return this.examsService.findAllPublished(category);
   }
@@ -107,8 +124,8 @@ export class ExamsController {
 
   @Get(':id/get-exams')
   @Roles('1', '2', '3') 
-  async getFullDetails(@Param('id') id: string) {
-    return this.examsService.getExamWithQuestions(+id);
+  async getFullDetails(@Param('id') id: string, @Req() req: RequestWithUser) {
+    return this.examsService.getExamWithQuestions(+id, req.user.userId);
   }
 
   @Post('add-question')
@@ -137,11 +154,29 @@ export class ExamsController {
       req.user.userId,
     );
   }
+  
 
-  @Post('finish/:userExamId')
-  @Roles('1')
-  finish(@Param('userExamId') userExamId: string, @Req() req: RequestWithUser) {
-    return this.examsService.finishExam(+userExamId, req.user.userId);
+  // @Post('finish/:userExamId')
+  // @Roles('1')
+  // finish(@Param('userExamId') userExamId: string, @Req() req: RequestWithUser) {
+  //   return this.examsService.finishExam(+userExamId, req.user.userId);
+  // }
+  @Post('finish')
+  @Roles('1') // Pastikan role murid bisa akses
+  async finish(@Body() body: { userExamId: number }, @Req() req: RequestWithUser) {
+    // 1. Ambil userId sesuai interface (userId)
+    const userId = req.user?.userId; 
+
+    // 2. Pastikan userExamId adalah number
+    const userExamId = Number(body.userExamId);
+
+    console.log('DEBUG: Memproses finishExam untuk userExamId:', userExamId, 'userId:', userId);
+
+    if (!userId) {
+      throw new UnauthorizedException("User ID tidak ditemukan dalam session.");
+    }
+
+    return this.examsService.finishExam(userExamId, userId);
   }
 
   // --- CHECKOUT EXAM ---

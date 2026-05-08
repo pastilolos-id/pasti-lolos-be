@@ -1,15 +1,22 @@
-import { Controller, Post, Body, UseGuards, Req, UseInterceptors, UploadedFile, Param, Patch, BadRequestException, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
+import { Controller, Post,Get,Query,ParseIntPipe, Body, UseGuards, Req, UseInterceptors, UploadedFile, Param, Patch, BadRequestException, ParseFilePipe, MaxFileSizeValidator, FileTypeValidator } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorators';
+import { CheckVoucherDto } from './dto/coupon-check.dto';
 
 @Controller('payments')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
+
+  @Post('apply-coupon')
+  async applyVoucher(@Body() dto: CheckVoucherDto) {
+    // Memproses pengecekan voucher via body request
+    return await this.paymentsService.validateVoucher(dto.couponCode, dto.examId);
+  }
     // URL KHUSUS CHECKOUT EXAM
     @Post('checkout/exam')
     @UseInterceptors(FileInterceptor('file'))
@@ -40,6 +47,13 @@ export class PaymentsController {
       return this.paymentsService.approveManualPayment(+orderId);
     }
 
+    @Patch('approve/:orderId') // atau @Post sesuai route lo
+    @Roles('3') // Cuma Admin yang bisa approve[cite: 6]
+      async approvePayment(@Param('orderId') orderId: string) {
+        // Gunakan Number(orderId) atau +orderId untuk konversi string ke number
+        return this.paymentsService.approveManualPayment(Number(orderId));
+    }
+
   @Patch('verify-bulk')
   @Roles('3') // Admin Only[cite: 9]
   async verifyBulk(@Body('orderIds') orderIds: number[]) {
@@ -64,4 +78,6 @@ export class PaymentsController {
     
     // Lanjut proses upload ke Cloudinary...[cite: 6, 9]
   }
+
+  
 }

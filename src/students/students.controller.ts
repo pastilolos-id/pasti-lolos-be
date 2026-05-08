@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Req , Param, ParseIntPipe, Patch, Body, Res} from '@nestjs/common';
+import { Controller,Query, Get, UseGuards, Req , Param, ParseIntPipe, Patch, Body, Res} from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { AuthGuard } from '@nestjs/passport';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -23,8 +23,8 @@ export class StudentsController {
 
   @Get('dashboard')
   @Roles('1') // Hanya untuk role Student
-  async getDashboard(@Req() req: RequestWithUser) {
-    return this.studentsService.getDashboardData(req.user.userId);
+  async getDashboard(@Req() req: RequestWithUser, @Query('category') category?: string) {
+    return this.studentsService.getDashboardData(category);
   }
   @Get('dashboard/exams')
   async getMyExams(@Req() req: any) {
@@ -42,9 +42,18 @@ export class StudentsController {
     return this.studentsService.getProfileStats(id);
   }
 
+  // @Get('attempts/:id/review')
+  //   async getReview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+  //   return this.studentsService.getExamReview(id, req.user.id);
+  // }
+
   @Get('attempts/:id/review')
-    async getReview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
-    return this.studentsService.getExamReview(id, req.user.id);
+    async getReview(
+      @Param('id') id: string,
+      @Req() req: any
+    ) {
+      // +id untuk convert string ke number
+      return this.studentsService.getAttemptReview(+id, req.user.userId);
   }
 
   @Get('exams/:id/leaderboard')
@@ -63,6 +72,14 @@ export class StudentsController {
     @Res() res: Response
   ) {
     return this.certificatesService.generateExamCertificate(+id, res);
+  }
+
+  @Get('purchases')
+  async getMyPurchases(
+    @Req() req: any,
+    @Query('type') type?: string // Untuk handle filter "Semua", "Tryout", "Materi"[cite: 1]
+  ) {
+    return this.studentsService.getPurchaseHistory(req.user.userId, type);
   }
 
 }

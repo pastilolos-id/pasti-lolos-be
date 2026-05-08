@@ -99,7 +99,7 @@ export class AuthController {
       });
 
       // 4. Redirect ke halaman utama (Home/Dashboard)
-      return res.redirect(`http://192.168.18.33:3000/home`);
+      return res.redirect(`http://localhost:3000/home`);
 
     } catch (error) {
       // KALO GAGAL: 
@@ -110,6 +110,7 @@ export class AuthController {
       const errorMessage = encodeURIComponent('Login Google gagal, silakan coba lagi.');
       return res.redirect(`http://localhost:3000/login?error=${errorMessage}`);
     }
+    
   }
   // @Get('google/callback')
   // @UseGuards(AuthGuard('google'))
@@ -156,5 +157,12 @@ export class AuthController {
     return {
       message: 'Logout berhasil',
     };
+  }
+
+  @UseGuards(AuthGuard('jwt')) // Dijagain biar cuma yang punya token bisa masuk
+  @Get('myProfile')
+  async getMe(@Req() req: any) {
+    // req.user.userId dapet dari logic JwtStrategy lo[cite: 1, 3]
+    return this.authService.getProfile(req.user.userId);
   }
 }

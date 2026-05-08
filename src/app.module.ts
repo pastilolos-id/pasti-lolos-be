@@ -10,6 +10,7 @@ import { BankSoalModule } from './questions-bank/questions.module';
 import { StudentsModule } from './students/students.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { OrdersModule } from './orders/orders.module';
 import { APP_GUARD } from '@nestjs/core';
 
 @Module({
@@ -36,6 +37,7 @@ import { APP_GUARD } from '@nestjs/core';
     AdminModule,
     StudentsModule,
     PaymentsModule,
+    OrdersModule,
   ],
   controllers: [],
   providers: [

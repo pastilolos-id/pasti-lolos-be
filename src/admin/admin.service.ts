@@ -64,8 +64,8 @@ export class AdminService {
 
       return { 
         success: true,
-        message: `Pembayaran ${paymentId} telah di-update menjadi ${status}`,
-        data: updatedPayment 
+        message: `Pembayaran ${paymentId} telah di-update menjadi ${status}`
+        // data: updatedPayment 
       };
     });
   }

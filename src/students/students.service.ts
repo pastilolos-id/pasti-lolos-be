@@ -16,38 +16,70 @@ type LeaderboardResult = {
 export class StudentsService {
   constructor(private prisma: PrismaService) {}
 
-  async getDashboardData(userId: number) {
-    // 1. Ambil data profil & statistik dasar
-    const stats = await this.getStudentStats(userId);
-    const profile = await this.getProfileStats(userId);
+  async getDashboardData(category: string = 'BUMN') {
+    const [banners, flashSale, leaderboard] = await Promise.all([
+      // 1. Data Slider/Banner
+      this.prisma.assets.findMany({
+        where: { isPublic: true },
+        orderBy: { uploadDate: 'asc' },
+        take: 5,
+        select: {
+          id: true,
+          assetName: true,
+          filePath: true,
+          cdnUrl: true,
+          tags: true,
+        }
+      }),
 
-    // 2. Ambil ujian yang sudah dibeli (Limit 3 saja untuk dashboard)
-    const purchasedExams = await this.getMyExams(userId);
-    
-    // 3. Ambil 1 ujian terakhir untuk info leaderboard singkat
-    const lastAttempt = stats.recentAttempts[0];
-    let miniLeaderboard: LeaderboardResult | null = null;
+      // 2. Data Flash Sale (published exams)
+      this.prisma.exams.findMany({
+        where: {
+          status: 'published',
+          packageId: null, // Hanya paket utama
+        },
+        take: 3,
+        select: {
+          id: true,
+          examName: true,
+          price: true,
+          examType: true, // Materi/Tryout/Full Paket
+        }
+      }),
 
-    if (lastAttempt) {
-      miniLeaderboard = await this.getLeaderboard(lastAttempt.examId, userId);
-    }
+      // 3. Data Leaderboard (Ranking)
+      this.prisma.userExams.findMany({
+        where: {
+          status: 'submitted',
+          exam: {
+            subject: { subjectName: { equals: category, mode: 'insensitive' } }
+          }
+        },
+        take: 10,
+        orderBy: { score: 'desc' },
+        select: {
+          score: true,
+          user: { select: { username: true, firstName: true } },
+          metadataJson: true 
+        }
+      })
+    ]);
 
     return {
-      welcome: {
-        name: profile.profile.firstName || profile.profile.username,
-        avatar: profile.profile.profilePictureUrl
-      },
-      summaryCards: {
-        totalTaken: stats.totalExamsTaken,
-        avgScore: stats.averageScore,
-      },
-      recentActivity: stats.recentAttempts,
-      myExamsShortcut: purchasedExams.data.slice(0, 3), // Ambil 3 ujian terbaru yang dibeli
-      lastExamRank: miniLeaderboard ? {
-          examName: lastAttempt.exam.examName,
-          rank: miniLeaderboard.myRank,
-          totalParticipants: miniLeaderboard.totalParticipants
-      } : null
+      banners,
+      flashSale: flashSale.map(item => ({
+        id: item.id,
+        examName: item.examName,
+        price: Number(item.price),
+        examType: item.examType,
+        discountPrice: null,
+      })),
+      leaderboard: leaderboard.map((entry, index) => ({
+        rank: index + 1,
+        name: entry.user.firstName || entry.user.username,
+        scores: entry.metadataJson || { tkd: 0, akhlak: 0, bIng: 0 }
+      })),
+      flashSaleEndsAt: new Date(new Date().setHours(23, 59, 59)) // Contoh timer
     };
   }
 
@@ -286,5 +318,92 @@ export class StudentsService {
         })
       };
     }
+
+    async getPurchaseHistory(userId: number, type?: string) {
+      return await this.prisma.orders.findMany({
+        where: {
+          userId: userId,
+          // Filter berdasarkan tipe item jika ada (Tryout/Materi)
+          ...(type && type !== 'Semua' ? {
+            orderItems: {
+              some: {
+                itemType: type.toLowerCase() === 'tryout' ? 'exam' : 'course'
+              }
+            }
+          } : {})
+        },
+        include: {
+          orderItems: true, // Untuk ambil nama exam/materi
+          payments: {
+            select: {
+              paymentMethod: true,
+              receiptUrl: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc' // Yang terbaru di atas sesuai gambar lo
+        }
+      });
+    }
+
+    async getAttemptReview(userExamId: number, userId: number) {
+      const attempt = await this.prisma.userExams.findFirst({
+        where: { 
+          id: userExamId, 
+          userId: userId // Pastikan user cuma bisa liat hasil dia sendiri
+        },
+        include: {
+          exam: {
+            select: { examName: true }
+          },
+          userExamAnswers: {
+            include: {
+              question: {
+                select: {
+                  questionText: true,
+                  explanationText: true, // Ini output yang lo cari [cite: 101]
+                  answers: { // Untuk nampilin semua pilihan jawaban (A, B, C, D)
+                    select: {
+                      id: true,
+                      answerText: true,
+                      isCorrect: true
+                    },
+                    orderBy: { orderNumber: 'asc' } // Urutkan pilihan jawaban [cite: 117]
+                  }
+                }
+              },
+              selectedAnswer: { // Jawaban yang dipilih user [cite: 314]
+                select: {
+                  answerText: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!attempt) {
+        throw new NotFoundException('Data review ujian tidak ditemukan');
+      }
+
+      // Mapping agar response-nya rapi buat Frontend
+      return {
+        examName: attempt.exam.examName,
+        score: attempt.score,
+        isCompleted: attempt.isCompleted,
+        reviewData: attempt.userExamAnswers.map((ua) => ({
+          question: ua.question.questionText,
+          explanation: ua.question.explanationText, // Pembahasan [cite: 101]
+          userAnswer: ua.selectedAnswer?.answerText || ua.userAnswer, 
+          isCorrect: ua.isCorrect,
+          points: ua.pointsEarned,
+          options: ua.question.answers.map((opt) => ({
+            text: opt.answerText,
+            isCorrect: opt.isCorrect
+          }))
+        }))
+      };
+  }
 
 }

@@ -18,14 +18,44 @@ export class PaymentsService {
     file: Express.Multer.File,
     discountCode?: string,
   ) {
+    // 1. Cari data Exam Utama
     const exam = await this.prisma.exams.findUnique({ where: { id: examId } });
     if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
+    // 2. CEK APAKAH SUDAH PUNYA AKSES (Enrollment)
+    const existingEnrollment = await this.prisma.userExams.findFirst({
+      where: { userId, examId },
+    });
+    if (existingEnrollment) {
+      throw new BadRequestException('Lo sudah punya akses ke ujian ini.');
+    }
+
+    // 3. CEK APAKAH ADA ORDER YANG MASIH PENDING (Ini yang lo butuhin, Bal)
+    const pendingOrder = await this.prisma.orders.findFirst({
+      where: {
+        userId,
+        orderStatus: 'pending', // Masih nunggu verifikasi admin
+        orderItems: {
+          some: {
+            itemId: examId,
+            itemType: 'exam'
+          }
+        }
+      }
+    });
+
+    if (pendingOrder) {
+      throw new BadRequestException({
+        statusCode: 400,
+        message: 'Kamu masih memiliki transaksi pending untuk ujian ini. Tunggu konfirmasi admin atau hubungi CS.',
+      });
+    }
+
+    // 3. LOGIC DISKON
     const totalAmount = exam.price ?? new Prisma.Decimal(0);
     let discountAmount = new Prisma.Decimal(0);
     let couponId: number | null = null;
 
-    // 1. Logic Diskon
     if (discountCode) {
       const coupon = await this.prisma.coupons.findUnique({ where: { couponCode: discountCode } });
       const now = new Date();
@@ -42,8 +72,13 @@ export class PaymentsService {
 
     const grandTotal = Prisma.Decimal.max(totalAmount.sub(discountAmount), 0);
 
-    // 2. Transaksi Database
+    // --- 4. UPLOAD CLOUDINARY DI LUAR TRANSAKSI (Anti P2028) ---
+    if (!file) throw new BadRequestException('Bukti pembayaran wajib diunggah');
+    const upload = await this.cloudinary.uploadFile(file, 'exam_payment_proofs');
+
+    // 5. TRANSAKSI DATABASE (Cepat karena upload sudah selesai)
     return await this.prisma.$transaction(async (tx) => {
+      // A. Buat Order
       const order = await tx.orders.create({
         data: {
           userId,
@@ -62,19 +97,18 @@ export class PaymentsService {
               pricePerItem: totalAmount,
               totalPrice: grandTotal,
               courseId: 0,
-              metadataJson: { examId } as any,
+              metadataJson: { examId } as Prisma.JsonObject,
             }],
           },
         },
       });
 
+      // B. Update kuota kupon
       if (couponId) {
         await tx.coupons.update({ where: { id: couponId }, data: { usesCount: { increment: 1 } } });
       }
 
-      // Upload bukti transfer ke Cloudinary
-      const upload = await this.cloudinary.uploadFile(file, 'exam_payment_proofs');
-
+      // C. Record Payment
       await tx.payments.create({
         data: {
           orderId: order.id,
@@ -83,11 +117,12 @@ export class PaymentsService {
           paymentMethod,
           transactionId: `EXTX-${Date.now()}-${userId}`,
           paymentStatus: 'pending',
-          receiptUrl: upload.secure_url,
+          receiptUrl: upload.secure_url, // URL dari upload di atas
         },
       });
 
       return {
+        success: true,
         message: 'Pembayaran berhasil diupload. Tunggu verifikasi admin.',
         orderId: order.id,
         grandTotal,
@@ -96,44 +131,79 @@ export class PaymentsService {
   }
 
   // Fungsi Approve oleh Admin[cite: 5]
-  async approveManualPayment(orderId: number) {
+  // src/payments/payments.service.ts
+
+  // src/payments/payments.service.ts
+
+  async approveManualPayment(orderId: number) { // Ganti jadi number
     return await this.prisma.$transaction(async (tx) => {
-      const order = await tx.orders.update({
-        where: { id: orderId },
-        data: { orderStatus: 'completed', paymentStatus: 'paid' },
+      // 1. Ambil detail order
+      const order = await tx.orders.findUnique({
+        where: { id: orderId }, // Sekarang sudah match (number)
         include: { orderItems: true }
       });
 
+      if (!order) throw new NotFoundException('Order tidak ditemukan');
+      
+      if (order.orderStatus === 'completed') {
+        throw new BadRequestException('Order ini sudah diproses sebelumnya.');
+      }
+
+      // 2. Update status Order & Payment
+      // PENTING: Tambahkan include orderItems di sini juga agar variabel 'updatedOrder' punya datanya
+      const updatedOrder = await tx.orders.update({
+        where: { id: orderId },
+        data: { 
+          orderStatus: 'completed', 
+          paymentStatus: 'paid' 
+        },
+        include: { orderItems: true } // Tambahkan ini biar error Property 'orderItems' does not exist hilang
+      });
+
+      // 3. Update status di tabel Payments
       await tx.payments.updateMany({
         where: { orderId: order.id },
-        data: { paymentStatus: 'completed' }
+        data: { paymentStatus: 'completed' } 
       });
 
-      // --- AUTO ENROLL LOGIC ---
-      const examId = order.orderItems[0].itemId;
-      const subExams = await tx.exams.findMany({ where: { packageId: examId } });
-      const allExams = [{ id: examId }, ...subExams];
+      // 4. --- AUTO ENROLL LOGIC ---
+      // Pakai updatedOrder yang sudah include orderItems
+      const parentExamIds = updatedOrder.orderItems
+        .filter(item => item.itemType === 'exam')
+        .map(item => item.itemId);
 
-      await tx.userExams.createMany({
-        data: allExams.map(e => ({
-          userId: order.userId,
-          examId: e.id,
-          status: 'not_started',
-        })),
-        skipDuplicates: true,
-      });
+      if (parentExamIds.length > 0) {
+        const subExams = await tx.exams.findMany({ 
+          where: { packageId: { in: parentExamIds } },
+          select: { id: true }
+        });
+        
+        const childExamIds = subExams.map(se => se.id);
+        const allExamIdsToEnroll = [...new Set([...parentExamIds, ...childExamIds])];
 
-      // Kirim Notifikasi[cite: 5]
+        await tx.userExams.createMany({
+          data: allExamIdsToEnroll.map(id => ({
+            userId: updatedOrder.userId,
+            examId: id,
+            status: 'not_started',
+          })),
+          skipDuplicates: true, 
+        });
+      }
+
+      // 5. Kirim Notifikasi
       await tx.notifications.create({
         data: {
-          userId: order.userId,
+          userId: updatedOrder.userId,
           notificationType: 'payment_approved',
           title: 'Akses Ujian Terbuka!',
-          message: `Pembayaran untuk ${order.orderItems[0].itemName} berhasil. Selamat belajar!`,
+          message: `Pembayaran untuk ${updatedOrder.orderItems[0].itemName} berhasil diverifikasi. Selamat belajar!`,
         }
       });
 
-      return { message: `Order #${orderId} berhasil diverifikasi dan akses dibuka.` };
+      return { 
+        message: `Order #${orderId} sukses, status 'completed', dan akses dibuka.` 
+      };
     });
   }
 
@@ -159,6 +229,89 @@ export class PaymentsService {
         message: `${orderIds.length} pembayaran berhasil disetujui sekaligus.` 
       };
     });
+  }
+
+  async validateVoucher(code: string, examId: number) {
+    const now = new Date();
+
+    const coupon = await this.prisma.coupons.findUnique({
+      where: { couponCode: code.toUpperCase() },
+    });
+
+    const exam = await this.prisma.exams.findUnique({
+      where: { id: examId },
+    });
+
+    // --- VALIDASI DENGAN FORMAT CUSTOM ---
+
+    if (!exam) {
+      throw new NotFoundException({
+        statusCode: 404,
+        error: 'Not Found',
+        message: 'Validation failed for one or more fields',
+        errors: {
+          examId: ['Ujian tidak ditemukan.']
+        }
+      });
+    }
+
+    if (!coupon || !coupon.isActive) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Validation failed for one or more fields',
+        errors: {
+          couponCode: ['Voucher tidak valid atau sudah tidak aktif.']
+        }
+      });
+    }
+
+    if (now < coupon.validFrom || now > coupon.validUntil) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Validation failed for one or more fields',
+        errors: {
+          couponCode: ['Masa berlaku voucher telah habis.']
+        }
+      });
+    }
+
+    if (coupon.maxUses && (coupon.usesCount ?? 0) >= coupon.maxUses) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Validation failed for one or more fields',
+        errors: {
+          couponCode: ['Kuota pemakaian voucher sudah penuh.']
+        }
+      });
+    }
+
+    // --- KALKULASI ---
+    const originalPrice = Number(exam.price);
+    let discountAmount = 0;
+
+    if (coupon.discountType === 'percentage') {
+      // Hitung berdasarkan persen
+      discountAmount = (originalPrice * Number(coupon.discountValue)) / 100;
+    } else {
+      // Hitung berdasarkan nominal tetap
+      discountAmount = Number(coupon.discountValue);
+    }
+
+    const finalPrice = Math.max(0, originalPrice - discountAmount);
+
+    return {
+      message: 'Voucher berhasil dipasang',
+      summary: {
+        examName: exam.examName,
+        originalPrice: originalPrice,
+        discount: discountAmount,
+        totalPay: finalPrice,
+        couponUsed: coupon.couponCode
+      }
+    };
   }
   
 }

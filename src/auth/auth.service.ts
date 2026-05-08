@@ -14,7 +14,7 @@ interface GoogleUserPayload {
   email: string;
   firstName: string;
   lastName: string;
-  profilePictureUrl?: string;
+  picture?: string;
 }
 
 interface AuthResult {
@@ -102,7 +102,7 @@ export class AuthService {
           passwordHash: '',
           firstName: googleUser.firstName,
           lastName: googleUser.lastName,
-          profilePictureUrl: googleUser.profilePictureUrl || null,
+          profilePictureUrl: googleUser.picture || null,
           userRoleId: 1,
           status: 'active',
         },
@@ -137,6 +137,33 @@ export class AuthService {
         fullName: fullName || user.username, // Fallback ke username kalau nama kosong[cite: 7]
         profilePictureUrl: user.profilePictureUrl || null,
       },
+    };
+  }
+
+  // src/auth/auth.service.ts
+
+  async getProfile(userId: number) {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        firstName: true,
+        lastName: true,
+        profilePictureUrl: true,
+        userRoleId: true,
+        status: true,
+        // Jangan return passwordHash di sini!
+      },
+    });
+
+    if (!user) throw new UnauthorizedException('User tidak ditemukan');
+
+    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    return {
+      ...user,
+      fullName: fullName || user.username,
     };
   }
 }

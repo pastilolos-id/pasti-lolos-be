@@ -16,7 +16,7 @@ export class AdminController {
   }
 
   @Patch('payments/verify/:id')
-  @Roles('3')
+  // @Roles('3')
   async verify(
     @Param('id', ParseIntPipe) id: number, // Pake ParseIntPipe biar otomatis jadi number
     @Body() dto: VerifyPaymentDto,
