@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 interface GoogleUserPayload {
   googleId: string;
@@ -31,6 +32,16 @@ interface AuthResult {
   };
 }
 
+interface TokenUser {
+  id: number;
+  email: string;
+  username: string;
+  userRoleId: number;
+  firstName: string | null;
+  lastName: string | null;
+  profilePictureUrl: string | null;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -40,16 +51,20 @@ export class AuthService {
 
   // REGISTER MANUAL
   async register(data: RegisterDto) {
-    const exists = await this.prisma.users.findUnique({ where: { email: data.email } });
-    const phoneExists = await this.prisma.users.findFirst({ where: { phoneNumber: data.phoneNumber } });
+    const exists = await this.prisma.users.findUnique({
+      where: { email: data.email },
+    });
+    const phoneExists = await this.prisma.users.findFirst({
+      where: { phoneNumber: data.phoneNumber },
+    });
 
     if (exists || phoneExists) {
       throw new BadRequestException({
         statusCode: 400,
         errors: {
           ...(exists && { email: ['Email sudah terdaftar'] }),
-          ...(phoneExists && { phoneNumber: ['Nomor HP sudah digunakan'] })
-        }
+          ...(phoneExists && { phoneNumber: ['Nomor HP sudah digunakan'] }),
+        },
       });
     }
 
@@ -98,7 +113,8 @@ export class AuthService {
         data: {
           email: googleUser.email,
           googleId: googleUser.googleId,
-          username: googleUser.email.split('@')[0] + Math.floor(Math.random() * 1000),
+          username:
+            googleUser.email.split('@')[0] + Math.floor(Math.random() * 1000),
           passwordHash: '',
           firstName: googleUser.firstName,
           lastName: googleUser.lastName,
@@ -112,7 +128,7 @@ export class AuthService {
   }
 
   // FUNGSI PUSAT GENERATE TOKEN[cite: 7]
-  generateToken(user: any): AuthResult {
+  generateToken(user: TokenUser): AuthResult {
     const payload = {
       userId: user.id,
       sub: user.id,
@@ -151,9 +167,27 @@ export class AuthService {
         username: true,
         firstName: true,
         lastName: true,
+        phoneNumber: true,
+        address: true,
+        city: true,
+        province: true,
+        country: true,
+        postalCode: true,
+        dateOfBirth: true,
+        gender: true,
         profilePictureUrl: true,
         userRoleId: true,
+        userRoles: {
+          select: {
+            roleName: true,
+          },
+        },
         status: true,
+        isAgreed: true,
+        agreedAt: true,
+        lastLoginAt: true,
+        createdAt: true,
+        updatedAt: true,
         // Jangan return passwordHash di sini!
       },
     });
@@ -163,13 +197,60 @@ export class AuthService {
     const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
     return {
       ...user,
+      roleName: user.userRoles.roleName,
       fullName: fullName || user.username,
     };
   }
+
+  async updateProfile(userId: number, dto: UpdateProfileDto) {
+    const currentUser = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { id: true, phoneNumber: true },
+    });
+    if (!currentUser) {
+      throw new UnauthorizedException('User tidak ditemukan');
+    }
+
+    if (dto.phoneNumber && dto.phoneNumber !== currentUser.phoneNumber) {
+      const phoneExists = await this.prisma.users.findFirst({
+        where: {
+          phoneNumber: dto.phoneNumber,
+          id: { not: userId },
+        },
+        select: { id: true },
+      });
+      if (phoneExists) {
+        throw new BadRequestException({
+          statusCode: 400,
+          errors: {
+            phoneNumber: ['Nomor HP sudah digunakan'],
+          },
+        });
+      }
+    }
+
+    await this.prisma.users.update({
+      where: { id: userId },
+      data: {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phoneNumber: dto.phoneNumber,
+        address: dto.address,
+        city: dto.city,
+        province: dto.province,
+        country: dto.country,
+        postalCode: dto.postalCode,
+      },
+    });
+
+    const profile = await this.getProfile(userId);
+    return {
+      success: true,
+      message: 'Profil berhasil diperbarui',
+      data: profile,
+    };
+  }
 }
-
-
-
 
 // src/auth/auth.service.ts
 // import {
@@ -212,7 +293,7 @@ export class AuthService {
 //   // REGISTER MANUAL
 //   async register(data: RegisterDto) {
 //     // console.log('Data dari FE:', data);
-    
+
 //     // 1. Cek duplikasi email
 //     const exists = await this.prisma.users.findUnique({
 //       where: { email: data.email },
@@ -222,7 +303,6 @@ export class AuthService {
 //       where: { phoneNumber: data.phoneNumber }
 //     });
 
-    
 //     if (exists && phoneExists) {
 //       throw new BadRequestException({
 //         statusCode: 400,
@@ -241,8 +321,6 @@ export class AuthService {
 //         }
 //       });
 //     }
-
-    
 
 //     if (phoneExists) {
 //       throw new BadRequestException({
@@ -350,7 +428,7 @@ export class AuthService {
 //         email: user.email,
 //         username: user.username,
 //         userRoleId: user.userRoleId,
-//         firstName: user.firstName || null, 
+//         firstName: user.firstName || null,
 //         lastName: user.lastName || null,
 //         profilePictureUrl: user.profilePictureUrl || null,
 //         fullName: fullName,

@@ -5,24 +5,46 @@ import {
   BadRequestException,
   ForbiddenException,
   ConflictException,
-  
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExamDto } from './dto/create-exam.dto';
-import {
-  Answers,
-  ExamQuestions,
-  Exams,
-  Prisma,
-  Questions,
-} from '@prisma/client';
+import { Answers, ExamQuestions, Prisma, Questions } from '@prisma/client';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { AddQuestionToExamDto } from './dto/add-question-to-exam.dto';
 import { CreateAnswerDto } from './dto/create-answer.dto';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 import { BulkCreateQuestionsDto } from './dto/bulk-create-questions.dto';
 import { SubmitExamDto } from './dto/submit-exam.dto';
-// import { session } from 'passport';
+
+interface SubmitAnswerResult {
+  id: number;
+  questionId: number;
+  selectedAnswerId: number | null;
+  updatedAt: Date;
+}
+
+interface VoucherInput {
+  couponCode: string;
+  discountType: string;
+  discountValue: number | string;
+  validFrom: string | number | Date;
+  validUntil: string | number | Date;
+  maxUses: number;
+  examIds?: number[];
+}
+
+interface ExamScoreSummary {
+  totalQuestions?: number;
+  correctAnswers?: number;
+  wrongAnswers?: number;
+  unanswered?: number;
+  result?: string;
+}
+
+interface ExamScoreMetadata {
+  summary?: ExamScoreSummary;
+  details?: unknown[];
+}
 
 @Injectable()
 export class ExamsService {
@@ -33,18 +55,20 @@ export class ExamsService {
   ) {}
 
   // --- CRUD EXAMS ---
-  async createExam(data: CreateExamDto, userId: number): Promise<{ message: string }> {
+  async createExam(
+    data: CreateExamDto,
+    userId: number,
+  ): Promise<{ message: string }> {
     if (!userId) {
       throw new BadRequestException('User ID tidak valid');
     }
 
-    const parsedPackageId = data.packageId 
-      ? parseInt(data.packageId.toString(), 10) 
+    const parsedPackageId = data.packageId
+      ? parseInt(data.packageId.toString(), 10)
       : null;
 
-    const packageIdFinal = parsedPackageId && !isNaN(parsedPackageId) 
-      ? parsedPackageId 
-      : null;
+    const packageIdFinal =
+      parsedPackageId && !isNaN(parsedPackageId) ? parsedPackageId : null;
 
     await this.prisma.exams.create({
       data: {
@@ -71,7 +95,7 @@ export class ExamsService {
         metadataJson: {
           source: 'admin_panel',
           created_at_iso: new Date().toISOString(),
-          ...(data.metadataJson as object || {}),
+          ...((data.metadataJson as object) || {}),
         } as Prisma.InputJsonValue,
       },
     });
@@ -83,7 +107,6 @@ export class ExamsService {
 
   async updateExam(id: number, userId: number, data: Partial<CreateExamDto>) {
     const exam = await this.prisma.exams.findUnique({ where: { id } });
-    
     if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
     // Update data dengan konversi tipe yang sesuai schema (Decimal & Int)
@@ -92,20 +115,24 @@ export class ExamsService {
       data: {
         examName: data.examName,
         description: data.description,
-        durationMinutes: data.durationMinutes 
-        ? parseInt(data.durationMinutes.toString(), 10) 
-        : undefined,
+        durationMinutes: data.durationMinutes
+          ? parseInt(data.durationMinutes.toString(), 10)
+          : undefined,
         examType: data.examType,
         status: data.status, // Bisa buat ganti status manual
         startTime: data.startTime ? new Date(data.startTime) : undefined,
         endTime: data.endTime ? new Date(data.endTime) : undefined,
-        passingScore: data.passingScore ? new Prisma.Decimal(data.passingScore) : undefined,
+        passingScore: data.passingScore
+          ? new Prisma.Decimal(data.passingScore)
+          : undefined,
         price: data.price ? new Prisma.Decimal(data.price) : undefined,
-        attemptsAllowed: data.attemptsAllowed ? parseInt(data.attemptsAllowed, 10) : undefined,
+        attemptsAllowed: data.attemptsAllowed
+          ? parseInt(data.attemptsAllowed, 10)
+          : undefined,
         randomizeQuestions: data.randomizeQuestions,
         // Update metadata biar ketahuan siapa yang terakhir ngubah
         metadataJson: {
-          ...(exam.metadataJson as object || {}),
+          ...((exam.metadataJson as object) || {}),
           lastUpdatedBy: userId,
           updatedAt: new Date().toISOString(),
         } as Prisma.InputJsonValue,
@@ -118,7 +145,7 @@ export class ExamsService {
     const exam = await this.prisma.exams.findUnique({ where: { id } });
     if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
-    // Karena di tabel lo (kolom 12) ada kolom 'status', 
+    // Karena di tabel lo (kolom 12) ada kolom 'status',
     // kita set statusnya jadi 'archived' atau 'deleted' sebagai soft delete.
     return this.prisma.exams.update({
       where: { id },
@@ -126,9 +153,12 @@ export class ExamsService {
     });
   }
 
-
   // --- GET EXAM PUBLISHING ---
-  async findAllPublished(subjectName?: string, page: number = 1, limit: number = 10) {
+  async findAllPublished(
+    subjectName?: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
     if (!subjectName) {
       throw new BadRequestException('Kategori (BUMN/CPNS) harus dipilih!');
     }
@@ -172,7 +202,9 @@ export class ExamsService {
         where: {
           status: 'published',
           packageId: null,
-          subject: { subjectName: { equals: subjectName, mode: 'insensitive' } },
+          subject: {
+            subjectName: { equals: subjectName, mode: 'insensitive' },
+          },
         },
       }),
     ]);
@@ -193,142 +225,150 @@ export class ExamsService {
       },
     };
   }
-  
   async getPackageDetail(examId: number, userId: number) {
-    // 1. Ambil data Paket Utama + Cek Enrollment + Cek Order Pending
+    // 1. Paksa ID jadi Number
+    const uId = Number(userId);
+    const eId = Number(examId);
+
+    // 2. Ambil data Paket Utama
     const parentExam = await this.prisma.exams.findUnique({
-      where: { id: examId },
+      where: { id: eId },
       include: {
         subject: true,
-        _count: { select: { examQuestions: true } },
-        // Cek apakah sudah lunas (ada di UserExams)
         userExams: {
-          where: { userId: userId },
-          select: { id: true, status: true }
-        }
+          where: { userId: uId },
+        },
       },
     });
 
     if (!parentExam) throw new NotFoundException('Paket ujian tidak ditemukan');
 
-    // 2. CEK STATUS ORDER (Untuk tahu apakah statusnya pending)
+    // 3. Tarik data pengerjaan user secara mandiri untuk menghindari join error
+    const allUserAttempts = await this.prisma.userExams.findMany({
+      where: { userId: uId },
+      select: {
+        id: true,
+        examId: true,
+        status: true,
+        score: true,
+      },
+    });
+
+    // 4. Cek Order
     const pendingOrder = await this.prisma.orders.findFirst({
       where: {
-        userId: userId,
+        userId: uId,
         orderStatus: 'pending',
-        orderItems: {
-          some: {
-            itemId: examId,
-            itemType: 'exam'
-          }
-        }
+        orderItems: { some: { itemId: eId, itemType: 'exam' } },
       },
-      select: { id: true, paymentStatus: true }
+    });
+
+    // 5. Ambil daftar Sub-Ujian
+    const children = await this.prisma.exams.findMany({
+      where: { packageId: eId, status: 'published' },
+      include: {
+        _count: { select: { examQuestions: true } },
+      },
+      orderBy: { createdAt: 'asc' },
     });
 
     const isPurchased = parentExam.userExams.length > 0;
-    
-    // Tentukan label status pembayaran untuk Frontend
-    let purchaseStatus = 'available'; // Default: Belum beli
-    if (isPurchased) {
-      purchaseStatus = 'completed'; // Sudah lunas & akses terbuka
-    } else if (pendingOrder) {
-      purchaseStatus = 'pending'; // Sudah order tapi belum lunas/verifikasi
-    }
+    const purchaseStatus = isPurchased
+      ? 'completed'
+      : pendingOrder
+        ? 'pending'
+        : 'available';
 
-    // 3. Ambil daftar Sub-Ujian
-    const children = await this.prisma.exams.findMany({
-      where: { 
-        packageId: examId,
-        status: 'published' 
-      },
-      select: {
-        id: true,
-        examName: true,
-        durationMinutes: true,
-        passingScore: true,
-        _count: { select: { examQuestions: true } },
-        userExams: {
-          where: { userId: userId },
-          select: { id: true, status: true }
-        }
-      },
-      orderBy: { createdAt: 'asc' }
+    let totalQuestionsCount = 0;
+    let totalScoreAccumulator = 0;
+
+    // 6. Map data dengan manual matching
+    const subExamsResult = children.map((child) => {
+      // Cari pengerjaan yang cocok dengan examId child ini
+      const attempt = allUserAttempts.find(
+        (a) => Number(a.examId) === Number(child.id),
+      );
+      // Pastikan konversi score aman
+      const scoreNum = attempt?.score ? Number(attempt.score) : 0;
+
+      totalQuestionsCount += child._count?.examQuestions || 0;
+      totalScoreAccumulator += scoreNum;
+
+      return {
+        id: child.id,
+        name: child.examName,
+        totalSoal: child._count?.examQuestions || 0,
+        passingGrade: child.passingScore,
+        duration: child.durationMinutes,
+        userExamId: attempt?.id || null,
+        status: attempt?.status || 'not_started',
+        score: scoreNum,
+      };
     });
 
     return {
       id: parentExam.id,
       examName: parentExam.examName,
       description: parentExam.description,
-      price: Number(parentExam.price) || 0, 
+      price: Number(parentExam.price) || 0,
       isPurchased: isPurchased,
-      purchaseStatus: purchaseStatus, // 'completed', 'pending', atau 'available'
+      purchaseStatus: purchaseStatus,
       pendingOrderId: pendingOrder?.id || null,
       totalDuration: parentExam.durationMinutes,
-      totalQuestions: parentExam._count.examQuestions,
+      totalQuestions: totalQuestionsCount,
+      totalPassingScore: totalScoreAccumulator,
       subject: parentExam.subject?.subjectName,
-      subExams: children.map(child => {
-        const enrollment = child.userExams[0] || null;
-        return {
-          id: child.id,
-          name: child.examName,
-          totalSoal: child._count.examQuestions,
-          passingGrade: child.passingScore,
-          duration: child.durationMinutes,
-          userExamId: enrollment?.id || null,
-          status: enrollment?.status || 'not_started'
-        };
-      })
+      subExams: subExamsResult,
     };
   }
 
-//   async getPackageDetail(examId: number) {
-//     // 1. Ambil data Paket Utama
-//     const parentExam = await this.prisma.exams.findUnique({
-//       where: { id: examId },
-//       include: {
-//         subject: true,
-//         _count: { select: { examQuestions: true } },
-//       },
-//     });
+  //   async getPackageDetail(examId: number) {
+  //     // 1. Ambil data Paket Utama
+  //     const parentExam = await this.prisma.exams.findUnique({
+  //       where: { id: examId },
+  //       include: {
+  //         subject: true,
+  //         _count: { select: { examQuestions: true } },
+  //       },
+  //     });
 
-//     if (!parentExam) throw new NotFoundException('Paket ujian tidak ditemukan');
+  //     if (!parentExam) throw new NotFoundException('Paket ujian tidak ditemukan');
 
-//     // 2. Ambil daftar Sub-Ujian
-//     const children = await this.prisma.exams.findMany({
-//       where: { 
-//         packageId: examId,
-//         status: 'published' 
-//       },
-//       select: {
-//         id: true,
-//         examName: true,
-//         durationMinutes: true,
-//         passingScore: true,
-//         _count: { select: { examQuestions: true } },
-//       },
-//       orderBy: { createdAt: 'asc' }
-//     });
+  //     // 2. Ambil daftar Sub-Ujian
+  //     const children = await this.prisma.exams.findMany({
+  //       where: {
+  //         packageId: examId,
+  //         status: 'published'
+  //       },
+  //       select: {
+  //         id: true,
+  //         examName: true,
+  //         durationMinutes: true,
+  //         passingScore: true,
+  //         _count: { select: { examQuestions: true } },
+  //       },
+  //       orderBy: { createdAt: 'asc' }
+  //     });
 
-//     // 3. Gabungkan data
-//     return {
-//       id: parentExam.id,
-//       examName: parentExam.examName,
-//     description: parentExam.description,
-//     // PAKSA JADI NUMBER DI SINI
-//     price: Number(parentExam.price) || 0, 
-//     totalDuration: parentExam.durationMinutes,
-//     totalQuestions: parentExam._count.examQuestions,
-//     subject: parentExam.subject?.subjectName,
-//     subExams: children.map(child => ({
-//       id: child.id,
-//       name: child.examName,
-//       totalSoal: child._count.examQuestions,
-//       passingGrade: child.passingScore,
-//       duration: child.durationMinutes
-//     }))
-//   };
-// }
+  //     // 3. Gabungkan data
+  //     return {
+  //       id: parentExam.id,
+  //       examName: parentExam.examName,
+  //     description: parentExam.description,
+  //     // PAKSA JADI NUMBER DI SINI
+  //     price: Number(parentExam.price) || 0,
+  //     totalDuration: parentExam.durationMinutes,
+  //     totalQuestions: parentExam._count.examQuestions,
+  //     subject: parentExam.subject?.subjectName,
+  //     subExams: children.map(child => ({
+  //       id: child.id,
+  //       name: child.examName,
+  //       totalSoal: child._count.examQuestions,
+  //       passingGrade: child.passingScore,
+  //       duration: child.durationMinutes
+  //     }))
+  //   };
+  // }
 
   // Get Exam Lengkap (Exams -> ExamQuestions -> Questions -> Answers)
   async findOneExam(id: number, userId: number) {
@@ -530,9 +570,9 @@ export class ExamsService {
       where: {
         examId: examId,
         userId: userId,
-        status: { in: ['not_started', 'in_progress'] } 
+        status: { in: ['not_started', 'in_progress'] },
       },
-      select: { id: true }
+      select: { id: true },
     });
 
     if (!userExam) {
@@ -553,7 +593,7 @@ export class ExamsService {
         passingScore: true,
         packageId: true,
         _count: {
-          select: { examQuestions: true }
+          select: { examQuestions: true },
         },
         examQuestions: {
           orderBy: { orderInExam: 'asc' },
@@ -584,14 +624,15 @@ export class ExamsService {
       },
     });
 
-    if (!exam) throw new NotFoundException(`Ujian dengan ID ${examId} tidak ditemukan`);
+    if (!exam)
+      throw new NotFoundException(`Ujian dengan ID ${examId} tidak ditemukan`);
 
     // 3. Return dengan format success wrapper dan inject userExamId ke dalam data
     return {
       success: true,
       message: 'Data soal berhasil diambil',
       userExamId: userExam.id, // ID pengerjaan buat modal submit
-      ...exam,                // Semua data dari patokan lo (id, examName, dll)
+      ...exam, // Semua data dari patokan lo (id, examName, dll)
       totalQuestions: exam._count.examQuestions,
       parentExamId: exam.packageId,
       // data: {
@@ -608,27 +649,32 @@ export class ExamsService {
       });
 
       if (!access) {
-        throw new ForbiddenException('Akses ujian tidak ditemukan. Silakan selesaikan pembayaran.');
+        throw new ForbiddenException(
+          'Akses ujian tidak ditemukan. Silakan selesaikan pembayaran.',
+        );
       }
 
       // 2. AMBIL DATA MASTER EXAM (Buat ambil durasi)
-      const exam = await tx.exams.findUnique({ 
+      const exam = await tx.exams.findUnique({
         where: { id: examId },
-        select: { durationMinutes: true, attemptsAllowed: true } 
+        select: { durationMinutes: true, attemptsAllowed: true },
       });
-      
-      if (!exam) throw new NotFoundException('Data master ujian tidak ditemukan.');
+
+      if (!exam)
+        throw new NotFoundException('Data master ujian tidak ditemukan.');
 
       // 3. LOGIC RESUME (Jika sudah in_progress, hitung ulang deadline-nya)
       if (access.status === 'in_progress') {
         const startTime = access.startTime;
-        const endTime = new Date(startTime.getTime() + exam.durationMinutes * 60000);
-        
+        const endTime = new Date(
+          startTime.getTime() + exam.durationMinutes * 60000,
+        );
+
         return {
           ...access,
           startTime,
           endTime, // Response tambahan buat FE
-          durationMinutes: exam.durationMinutes
+          durationMinutes: exam.durationMinutes,
         };
       }
 
@@ -646,7 +692,7 @@ export class ExamsService {
       const now = new Date();
       const deadline = new Date(now.getTime() + exam.durationMinutes * 60000);
 
-      const startedExam = await tx.userExams.update({
+      await tx.userExams.update({
         where: { id: access.id },
         data: {
           startTime: now,
@@ -659,7 +705,7 @@ export class ExamsService {
         // ...startedExam,
         startTime: now,
         endTime: deadline, // Ini jam selesainya
-        durationMinutes: exam.durationMinutes
+        durationMinutes: exam.durationMinutes,
       };
     });
   }
@@ -673,17 +719,19 @@ export class ExamsService {
     // 1. VALIDASI KEPEMILIKAN & STATUS SESI
     const attempt = await this.prisma.userExams.findUnique({
       where: { id: userExamId },
-      include: { 
-        exam: { select: { durationMinutes: true } } 
+      include: {
+        exam: { select: { durationMinutes: true } },
       },
     });
 
     if (!attempt || attempt.userId !== userId) {
       throw new ForbiddenException('Akses ditolak. Sesi ujian tidak valid.');
     }
-    
+
     if (attempt.status !== 'in_progress') {
-      throw new BadRequestException('Ujian sudah berakhir. Jawaban tidak bisa diubah.');
+      throw new BadRequestException(
+        'Ujian sudah berakhir. Jawaban tidak bisa diubah.',
+      );
     }
 
     // 2. LOGIC TIMER
@@ -694,27 +742,29 @@ export class ExamsService {
 
     if (now > deadline) {
       await this.finishExam(userExamId, userId);
-      throw new BadRequestException('Waktu habis! Sesi ujian telah ditutup secara otomatis.');
+      throw new BadRequestException(
+        'Waktu habis! Sesi ujian telah ditutup secara otomatis.',
+      );
     }
 
     // 3. LOGIC UPDATE ATAU INSERT
     const existingAnswer = await this.prisma.userExamAnswers.findFirst({
-      where: { 
-        userExamId: userExamId, 
-        questionId: questionId 
+      where: {
+        userExamId: userExamId,
+        questionId: questionId,
       },
     });
 
-    let result;
-    let message;
+    let result: SubmitAnswerResult;
+    let message: string;
 
     if (existingAnswer) {
       // Update jawaban yang sudah ada
       result = await this.prisma.userExamAnswers.update({
         where: { id: existingAnswer.id },
-        data: { 
-          selectedAnswerId: answerId, 
-          updatedAt: new Date() 
+        data: {
+          selectedAnswerId: answerId,
+          updatedAt: new Date(),
         },
       });
       message = 'Jawaban berhasil diperbarui';
@@ -739,8 +789,8 @@ export class ExamsService {
         id: result.id,
         questionId: result.questionId,
         selectedAnswerId: result.selectedAnswerId,
-        updatedAt: result.updatedAt
-      }
+        updatedAt: result.updatedAt,
+      },
     };
   }
   // async submitAnswer(
@@ -759,7 +809,7 @@ export class ExamsService {
   //   if (!attempt || attempt.userId !== userId) {
   //     throw new ForbiddenException('Akses ditolak. Sesi ujian tidak valid.');
   //   }
-    
+
   //   if (attempt.status !== 'in_progress') {
   //     throw new BadRequestException('Ujian sudah berakhir, Bal.');
   //   }
@@ -785,9 +835,9 @@ export class ExamsService {
   //   if (existingAnswer) {
   //     return this.prisma.userExamAnswers.update({
   //       where: { id: existingAnswer.id },
-  //       data: { 
-  //         selectedAnswerId: answerId, 
-  //         updatedAt: new Date() 
+  //       data: {
+  //         selectedAnswerId: answerId,
+  //         updatedAt: new Date()
   //       },
   //     });
   //   } else {
@@ -802,8 +852,10 @@ export class ExamsService {
   //   }
   // }
   async finishExam(userExamId: number, userId: number) {
-    console.log(`Memproses finishExam untuk userExamId: ${userExamId}, userId: ${userId}`);
-    
+    console.log(
+      `Memproses finishExam untuk userExamId: ${userExamId}, userId: ${userId}`,
+    );
+
     const attempt = await this.prisma.userExams.findUnique({
       where: { id: userExamId },
       include: {
@@ -812,7 +864,7 @@ export class ExamsService {
             examQuestions: {
               include: {
                 question: {
-                  include: { answers: true }
+                  include: { answers: true },
                 },
               },
             },
@@ -823,15 +875,15 @@ export class ExamsService {
     });
 
     if (!attempt || attempt.userId !== userId) {
-      throw new NotFoundException("Data ujian tidak ditemukan.");
+      throw new NotFoundException('Data ujian tidak ditemukan.');
     }
 
     // Jika sudah pernah submit, langsung return data yang ada
     if (attempt.status === 'submitted') {
       return {
         success: true,
-        message: "Ujian ini sudah diselesaikan sebelumnya.",
-        data: attempt
+        message: 'Ujian ini sudah diselesaikan sebelumnya.',
+        data: attempt,
       };
     }
 
@@ -843,13 +895,13 @@ export class ExamsService {
     const questionsRelation = attempt.exam.examQuestions || [];
 
     if (questionsRelation.length === 0) {
-      throw new BadRequestException("Ujian ini tidak memiliki soal.");
+      throw new BadRequestException('Ujian ini tidak memiliki soal.');
     }
 
     const evaluation = questionsRelation.map((eq) => {
       const question = eq.question;
       const userAns = attempt.userExamAnswers.find(
-        (ans) => ans.questionId === question.id
+        (ans) => ans.questionId === question.id,
       );
 
       // Hitung jawaban kosong
@@ -857,9 +909,10 @@ export class ExamsService {
         emptyCount++;
       }
 
-      const isCorrect = question.answers.find(
-        (a) => Number(a.id) === Number(userAns?.selectedAnswerId)
-      )?.isCorrect || false;
+      const isCorrect =
+        question.answers.find(
+          (a) => Number(a.id) === Number(userAns?.selectedAnswerId),
+        )?.isCorrect || false;
 
       if (isCorrect) {
         totalScore += Number(eq.pointsForQuestion || 0);
@@ -884,7 +937,7 @@ export class ExamsService {
       where: { id: userExamId },
       data: {
         score: totalScore.toString(),
-        status: "submitted",
+        status: 'submitted',
         isCompleted: true,
         endTime: new Date(),
         submissionTime: new Date(),
@@ -896,17 +949,17 @@ export class ExamsService {
             unanswered: emptyCount,
             finalScore: totalScore,
             passingScore: passingScore,
-            result: passingStatus
+            result: passingStatus,
           },
           details: evaluation,
-        } as any,
+        } as Prisma.InputJsonValue,
       },
     });
 
     // RETURN RESPONSE UNTUK FRONTEND
     return {
       success: true,
-      message: "Ujian berhasil diselesaikan! Lihat hasil Anda.",
+      message: 'Ujian berhasil diselesaikan! Lihat hasil Anda.',
       data: {
         userExamId: updatedResult.id,
         examName: attempt.exam.examName,
@@ -917,12 +970,12 @@ export class ExamsService {
           totalQuestions: questionsRelation.length,
           correct: correctCount,
           wrong: wrongCount,
-          empty: emptyCount
+          empty: emptyCount,
         },
         submittedAt: updatedResult.submissionTime,
         // Lo bisa include details kalau FE butuh buat nampilin pembahasan langsung
-        // details: evaluation 
-      }
+        // details: evaluation
+      },
     };
   }
   // async finishExam(userExamId: number, userId: number) {
@@ -1005,30 +1058,30 @@ export class ExamsService {
   //   });
   // }
 
-    // async getRemainingTime(userExamId: number, userId: number) {
-    //   const attempt = await this.prisma.userExams.findUnique({
-    //     where: { id: userExamId },
-    //     include: {
-    //       exam: { select: { durationMinutes: true } },
-    //     },
-    //   });
+  // async getRemainingTime(userExamId: number, userId: number) {
+  //   const attempt = await this.prisma.userExams.findUnique({
+  //     where: { id: userExamId },
+  //     include: {
+  //       exam: { select: { durationMinutes: true } },
+  //     },
+  //   });
 
-    //   if (!attempt) throw new NotFoundException('Sesi ujian tidak ditemukan');
-    //   if (attempt.userId !== userId) throw new ForbiddenException('Akses ditolak');
+  //   if (!attempt) throw new NotFoundException('Sesi ujian tidak ditemukan');
+  //   if (attempt.userId !== userId) throw new ForbiddenException('Akses ditolak');
 
-    //   const now = new Date().getTime();
-    //   const startTime = attempt.startTime.getTime();
-    //   const durationMinutes = attempt.exam.durationMinutes;
-    //   const deadline = startTime + durationMinutes * 60000;
-    //   const remaining = Math.max(0, Math.floor((deadline - now) / 1000));
+  //   const now = new Date().getTime();
+  //   const startTime = attempt.startTime.getTime();
+  //   const durationMinutes = attempt.exam.durationMinutes;
+  //   const deadline = startTime + durationMinutes * 60000;
+  //   const remaining = Math.max(0, Math.floor((deadline - now) / 1000));
 
-    //   return {
-    //     remainingSeconds: remaining,
-    //     isExpired: remaining <= 0,
-    //   };
-    // }
+  //   return {
+  //     remainingSeconds: remaining,
+  //     isExpired: remaining <= 0,
+  //   };
+  // }
 
-    // Tambahkan kurung kurawal tutup untuk menutup class ExamsService
+  // Tambahkan kurung kurawal tutup untuk menutup class ExamsService
   // }
   // async finishExam(userExamId: number, userId: number) {
   //   const attempt = await this.prisma.userExams.findUnique({
@@ -1195,8 +1248,8 @@ export class ExamsService {
         // Ambil sub-ujiannya buat informasi tambahan di struk checkout
         subExams: {
           where: { status: 'published' },
-          select: { examName: true }
-        }
+          select: { examName: true },
+        },
       },
     });
 
@@ -1209,10 +1262,10 @@ export class ExamsService {
       category: exam.subject?.subjectName,
       price: exam.price,
       // List sub-tes (misal buat ditaruh di bwh nama paket di struk)
-      includedSubExams: exam.subExams.map(c => c.examName),
+      includedSubExams: exam.subExams.map((c) => c.examName),
       // Lo bisa tambahin biaya admin atau diskon di sini nanti kalau ada logic-nya
-      adminFee: 0, 
-      totalPayment: exam.price 
+      adminFee: 0,
+      totalPayment: exam.price,
     };
   }
 
@@ -1230,7 +1283,7 @@ export class ExamsService {
         statusCode: 404,
         error: 'Not Found',
         message: 'Validation failed for one or more fields',
-        errors: { examId: ['Ujian tidak ditemukan'] }
+        errors: { examId: ['Ujian tidak ditemukan'] },
       });
     }
 
@@ -1247,8 +1300,8 @@ export class ExamsService {
         error: 'Bad Request',
         message: 'Validation failed',
         errors: {
-          examId: ['Lo sudah terdaftar di ujian ini, nggak perlu beli lagi.']
-        }
+          examId: ['Lo sudah terdaftar di ujian ini, nggak perlu beli lagi.'],
+        },
       });
     }
 
@@ -1275,7 +1328,7 @@ export class ExamsService {
           statusCode: 400,
           error: 'Bad Request',
           message: 'Validation failed for one or more fields',
-          errors: { couponCode: ['Kupon tidak valid atau sudah kadaluarsa'] }
+          errors: { couponCode: ['Kupon tidak valid atau sudah kadaluarsa'] },
         });
       }
 
@@ -1285,7 +1338,7 @@ export class ExamsService {
           statusCode: 400,
           error: 'Bad Request',
           message: 'Validation failed for one or more fields',
-          errors: { couponCode: ['Kupon ini hanya berlaku untuk ujian'] }
+          errors: { couponCode: ['Kupon ini hanya berlaku untuk ujian'] },
         });
       }
 
@@ -1305,10 +1358,14 @@ export class ExamsService {
     let receiptUrl: string | null = null;
 
     if (!isFree) {
-      if (!file) throw new BadRequestException('Bukti pembayaran wajib diunggah');
-      
+      if (!file)
+        throw new BadRequestException('Bukti pembayaran wajib diunggah');
+
       // Tambahkan timeout 1 menit untuk mengatasi koneksi lambat
-      const upload = await this.cloudinary.uploadFile(file, 'exam_payment_proofs');
+      const upload = await this.cloudinary.uploadFile(
+        file,
+        'exam_payment_proofs',
+      );
       receiptUrl = upload.secure_url;
     }
 
@@ -1326,22 +1383,24 @@ export class ExamsService {
           paymentStatus: isFree ? 'paid' : 'pending',
           paymentMethod: paymentMethod,
           orderItems: {
-            create: [{
-              itemType: 'exam',
-              itemId: examId,
-              itemName: exam.examName,
-              pricePerItem: totalAmount,
-              totalPrice: grandTotal,
-              courseId: 0,
-              metadataJson: { examId: examId } as Prisma.JsonObject,
-            }],
+            create: [
+              {
+                itemType: 'exam',
+                itemId: examId,
+                itemName: exam.examName,
+                pricePerItem: totalAmount,
+                totalPrice: grandTotal,
+                courseId: 0,
+                metadataJson: { examId: examId } as Prisma.JsonObject,
+              },
+            ],
           },
         },
       });
 
       // B. AUTO-ENROLL (Ujian Utama + Paket Sub-Exams)[cite: 1]
       const subExams = await tx.exams.findMany({
-        where: { packageId: examId }
+        where: { packageId: examId },
       });
 
       const allExamsToEnroll = [exam, ...subExams];
@@ -1350,7 +1409,7 @@ export class ExamsService {
         data: allExamsToEnroll.map((item) => ({
           userId: userId,
           examId: item.id,
-          status: 'not_started' as any,
+          status: 'not_started',
         })),
         skipDuplicates: true,
       });
@@ -1380,8 +1439,8 @@ export class ExamsService {
 
       return {
         success: true,
-        message: isFree 
-          ? 'Paket berhasil diaktifkan!' 
+        message: isFree
+          ? 'Paket berhasil diaktifkan!'
           : 'Pembayaran berhasil diupload. Tunggu verifikasi admin.',
         orderId: order.id,
         grandTotal: grandTotal,
@@ -1482,7 +1541,7 @@ export class ExamsService {
   //         },
   //       },
   //     });
-      
+
   //     // B. Update kuota kupon jika dipakai
   //     if (couponId) {
   //       await tx.coupons.update({
@@ -1518,9 +1577,19 @@ export class ExamsService {
   //   });
   // }
 
-  async updateExamQuestion(id: number, data: any) {
-    const existing = await this.prisma.examQuestions.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Relasi soal dan ujian tidak ditemukan');
+  async updateExamQuestion(
+    id: number,
+    data: {
+      orderInExam?: string | number;
+      pointsForQuestion?: string | number;
+      sectionName?: string;
+    },
+  ) {
+    const existing = await this.prisma.examQuestions.findUnique({
+      where: { id },
+    });
+    if (!existing)
+      throw new NotFoundException('Relasi soal dan ujian tidak ditemukan');
 
     // Tambahkan pengecekan data
     if (!data) throw new BadRequestException('Payload data tidak boleh kosong');
@@ -1529,8 +1598,10 @@ export class ExamsService {
       where: { id },
       data: {
         // Menggunakan optional chaining atau pengecekan null
-        orderInExam: data?.orderInExam ? parseInt(data.orderInExam, 10) : undefined,
-        pointsForQuestion: data?.pointsForQuestion ? new Prisma.Decimal(data.pointsForQuestion) : undefined,
+        orderInExam: data?.orderInExam ? Number(data.orderInExam) : undefined,
+        pointsForQuestion: data?.pointsForQuestion
+          ? new Prisma.Decimal(data.pointsForQuestion)
+          : undefined,
         sectionName: data?.sectionName ?? undefined,
       },
     });
@@ -1541,13 +1612,14 @@ export class ExamsService {
     // Cukup hapus record di tabel jembatan (ExamQuestions)
     // Soal asli di tabel Questions tetap aman (tidak terhapus)
     const record = await this.prisma.examQuestions.findFirst({
-      where: { examId, questionId }
+      where: { examId, questionId },
     });
 
-    if (!record) throw new NotFoundException('Soal tidak ditemukan di ujian ini');
+    if (!record)
+      throw new NotFoundException('Soal tidak ditemukan di ujian ini');
 
     return this.prisma.examQuestions.delete({
-      where: { id: record.id }
+      where: { id: record.id },
     });
   }
 
@@ -1572,25 +1644,27 @@ export class ExamsService {
             examQuestions: {
               include: {
                 question: {
-                  include: { answers: true }
-                }
-              }
-            }
-          }
+                  include: { answers: true },
+                },
+              },
+            },
+          },
         },
-        userExamAnswers: true
-      }
+        userExamAnswers: true,
+      },
     });
 
     if (!attempt || attempt.userId !== userId) throw new NotFoundException();
-    
+
     // Return data beserta ExplanationText untuk pembahasan
     return attempt;
   }
 
   async bulkCreateQuestions(dto: BulkCreateQuestionsDto, userId: number) {
     if (!dto.questions || dto.questions.length === 0) {
-      throw new BadRequestException('Questions array is required and cannot be empty');
+      throw new BadRequestException(
+        'Questions array is required and cannot be empty',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -1599,15 +1673,23 @@ export class ExamsService {
       for (const q of dto.questions) {
         // Validasi manual lo tetap gue jaga di sini
         if (!q.questionText || q.questionText.trim() === '') {
-          throw new BadRequestException('questionText is required and cannot be empty');
+          throw new BadRequestException(
+            'questionText is required and cannot be empty',
+          );
         }
         if (!q.answers || q.answers.length === 0) {
-          throw new BadRequestException('Answers are required for each question');
+          throw new BadRequestException(
+            'Answers are required for each question',
+          );
         }
-        if (dto.examId === undefined) throw new BadRequestException('examId wajib diisi');
-        if (q.orderInExam === undefined) throw new BadRequestException('orderInExam wajib diisi');
-        if (dto.subjectId === undefined) throw new BadRequestException('subjectId wajib diisi');
-        if (q.answers.length < 2) throw new BadRequestException('Minimal 2 jawaban');
+        if (dto.examId === undefined)
+          throw new BadRequestException('examId wajib diisi');
+        if (q.orderInExam === undefined)
+          throw new BadRequestException('orderInExam wajib diisi');
+        if (dto.subjectId === undefined)
+          throw new BadRequestException('subjectId wajib diisi');
+        if (q.answers.length < 2)
+          throw new BadRequestException('Minimal 2 jawaban');
 
         // 1. Buat Soal
         const question = await tx.questions.create({
@@ -1624,18 +1706,20 @@ export class ExamsService {
               create: q.answers.map((a, i) => {
                 // Validasi jawaban
                 if (!a.label || !a.answerText || a.isCorrect === undefined) {
-                  throw new BadRequestException(`Answer ke-${i + 1} tidak lengkap`);
+                  throw new BadRequestException(
+                    `Answer ke-${i + 1} tidak lengkap`,
+                  );
                 }
 
                 return {
                   answerText: a.answerText,
                   isCorrect: a.isCorrect,
                   // KARENA GAK ADA KOLOM LABEL DI DB, KITA TARUH DI SINI:
-                  metadataJson: { label: a.label } 
+                  metadataJson: { label: a.label },
                 };
-              })
-            }
-          }
+              }),
+            },
+          },
         });
 
         // 2. Hubungkan ke ExamQuestions
@@ -1645,7 +1729,7 @@ export class ExamsService {
             questionId: question.id,
             orderInExam: q.orderInExam,
             pointsForQuestion: new Prisma.Decimal(q.points || 5),
-          }
+          },
         });
 
         results.push(question);
@@ -1653,7 +1737,7 @@ export class ExamsService {
 
       return {
         message: `${results.length} soal berhasil di-import dengan Subject ID: ${dto.subjectId}`,
-        count: results.length
+        count: results.length,
       };
     });
   }
@@ -1662,11 +1746,13 @@ export class ExamsService {
     const { userExamId, answers } = dto;
     const attempt = await this.prisma.userExams.findUnique({
       where: { id: userExamId },
-      include: { exam: true }
+      include: { exam: true },
     });
 
-    if (!attempt || attempt.userId !== userId) throw new NotFoundException('Data ujian tidak ditemukan');
-    if (attempt.status === 'submitted') throw new BadRequestException('Ujian sudah dikumpulkan');
+    if (!attempt || attempt.userId !== userId)
+      throw new NotFoundException('Data ujian tidak ditemukan');
+    if (attempt.status === 'submitted')
+      throw new BadRequestException('Ujian sudah dikumpulkan');
 
     return this.prisma.$transaction(async (tx) => {
       let totalScore = 0;
@@ -1675,16 +1761,16 @@ export class ExamsService {
       for (const ans of answers) {
         const question = await tx.questions.findUnique({
           where: { id: ans.questionId },
-          include: { subject: true } // Ambil nama subjeknya (TWK/TIU/TKP)
+          include: { subject: true }, // Ambil nama subjeknya (TWK/TIU/TKP)
         });
 
         const correctOption = await tx.answers.findFirst({
-          where: { questionId: ans.questionId, isCorrect: true }
+          where: { questionId: ans.questionId, isCorrect: true },
         });
 
         const isCorrect = correctOption?.id === ans.selectedAnswerId;
         const examQuestion = await tx.examQuestions.findFirst({
-          where: { examId: attempt.examId, questionId: ans.questionId }
+          where: { examId: attempt.examId, questionId: ans.questionId },
         });
 
         const points = Number(examQuestion?.pointsForQuestion || 0);
@@ -1692,7 +1778,8 @@ export class ExamsService {
 
         if (isCorrect) {
           totalScore += points;
-          subjectScores[subjectName] = (subjectScores[subjectName] || 0) + points;
+          subjectScores[subjectName] =
+            (subjectScores[subjectName] || 0) + points;
         } else {
           subjectScores[subjectName] = subjectScores[subjectName] || 0;
         }
@@ -1703,8 +1790,8 @@ export class ExamsService {
             questionId: ans.questionId,
             selectedAnswerId: ans.selectedAnswerId,
             isCorrect,
-            metadataJson: {}
-          }
+            metadataJson: {},
+          },
         });
       }
 
@@ -1716,9 +1803,9 @@ export class ExamsService {
           endTime: new Date(),
           score: totalScore,
           metadataJson: {
-            analysisPerSubject: subjectScores // Contoh: { "TIU": 80, "TWK": 95 }
-          }
-        }
+            analysisPerSubject: subjectScores, // Contoh: { "TIU": 80, "TWK": 95 }
+          },
+        },
       });
     });
   }
@@ -1728,25 +1815,26 @@ export class ExamsService {
       where: { status: 'in_progress' }, //
       include: {
         user: { select: { firstName: true, email: true } },
-        exam: { select: { examName: true, durationMinutes: true } }
+        exam: { select: { examName: true, durationMinutes: true } },
       },
-      orderBy: { startTime: 'desc' }
+      orderBy: { startTime: 'desc' },
     });
 
-    return activeAttempts.map(attempt => {
+    return activeAttempts.map((attempt) => {
       const now = new Date().getTime();
-      const deadline = attempt.startTime.getTime() + (attempt.exam.durationMinutes * 60000);
+      const deadline =
+        attempt.startTime.getTime() + attempt.exam.durationMinutes * 60000;
       const remainingSeconds = Math.max(0, Math.floor((deadline - now) / 1000));
 
       return {
         ...attempt,
         remainingTime: `${Math.floor(remainingSeconds / 60)}m ${remainingSeconds % 60}s`,
-        isExpired: remainingSeconds <= 0
+        isExpired: remainingSeconds <= 0,
       };
     });
   }
 
-  async createVoucher(data: any) {
+  async createVoucher(data: VoucherInput) {
     return this.prisma.coupons.create({
       data: {
         couponCode: data.couponCode,
@@ -1758,7 +1846,7 @@ export class ExamsService {
         isActive: true,
         appliesToEntityType: 'exam', // Default buat launching lo[cite: 5]
         appliesToEntityIds: data.examIds || [], // Array ID exam yang boleh pake voucher ini[cite: 5]
-      }
+      },
     });
   }
 
@@ -1771,28 +1859,154 @@ export class ExamsService {
       where: {
         status: 'in_progress',
       },
-      include: { exam: true }
+      include: { exam: true },
     });
 
-    const toSubmit = expiredExams.filter(attempt => {
-      const deadline = new Date(attempt.startTime.getTime() + attempt.exam.durationMinutes * 60000);
+    const toSubmit = expiredExams.filter((attempt) => {
+      const deadline = new Date(
+        attempt.startTime.getTime() + attempt.exam.durationMinutes * 60000,
+      );
       return now > deadline;
     });
 
     // Proses bulk update status ke 'submitted'
     if (toSubmit.length > 0) {
-      const ids = toSubmit.map(a => a.id);
+      const ids = toSubmit.map((a) => a.id);
       await this.prisma.userExams.updateMany({
         where: { id: { in: ids } },
-        data: { 
+        data: {
           status: 'submitted',
           endTime: now,
           // Skor tetap dihitung berdasarkan jawaban yang sempat tersimpan[cite: 5]
-        }
+        },
       });
     }
-    
+
     return { processed: toSubmit.length };
   }
 
+  async getScoreByExam(examId: number, userId: number) {
+    // 1. Cari data pengerjaan yang sudah submitted
+    const result = await this.prisma.userExams.findFirst({
+      where: {
+        examId: examId,
+        userId: userId,
+        status: 'submitted', // Pastikan hanya ambil yang sudah selesai
+      },
+      include: {
+        exam: {
+          select: {
+            examName: true,
+            passingScore: true,
+          },
+        },
+      },
+    });
+
+    if (!result) {
+      throw new NotFoundException(
+        'Data hasil ujian tidak ditemukan. Mungkin Anda belum menyelesaikan ujian ini.',
+      );
+    }
+
+    // 2. Mapping output biar FE gampang nampilinnya
+    // Kita ambil summary yang lo simpan di metadataJson pas finishExam tadi
+    const metadata = (result.metadataJson ?? {}) as ExamScoreMetadata;
+    const summary = metadata.summary ?? {};
+
+    return {
+      success: true,
+      message: 'Data skor berhasil diambil',
+      data: {
+        userExamId: result.id,
+        examName: result.exam.examName,
+        finalScore: Number(result.score),
+        passingScore: Number(result.exam.passingScore),
+        status:
+          summary.result ||
+          (Number(result.score) >= Number(result.exam.passingScore)
+            ? 'passed'
+            : 'failed'),
+        statistics: {
+          totalQuestions: summary.totalQuestions || 0,
+          correctAnswers: summary.correctAnswers || 0,
+          wrongAnswers: summary.wrongAnswers || 0,
+          unanswered: summary.unanswered || 0,
+        },
+        submittedAt: result.submissionTime,
+        // Jika lo mau nampilin pembahasan (details), ambil dari metadataJson.details
+        details: metadata.details ?? [],
+      },
+    };
+  }
+
+  // src/exams/exams.service.ts
+
+  async getScoreByPackage(packageId: number, userId: number) {
+    // 1. Ambil semua sub-ujian yang termasuk dalam paket ini
+    const subExams = await this.prisma.exams.findMany({
+      where: { packageId: packageId },
+      select: { id: true, examName: true, passingScore: true },
+    });
+
+    if (subExams.length === 0) {
+      throw new NotFoundException(
+        'Paket ujian tidak ditemukan atau tidak memiliki sub-ujian.',
+      );
+    }
+
+    const subExamIds = subExams.map((e) => e.id);
+
+    // 2. Ambil semua hasil pengerjaan user untuk sub-ujian tersebut
+    const results = await this.prisma.userExams.findMany({
+      where: {
+        userId: userId,
+        examId: { in: subExamIds },
+        status: 'submitted',
+      },
+      include: {
+        exam: { select: { examName: true, passingScore: true } },
+      },
+    });
+
+    // 3. Hitung Akumulasi (Total Skor, Total Benar, dll)
+    let totalFinalScore = 0;
+    let allPassed = true;
+
+    const breakdown = results.map((res) => {
+      const metadata = (res.metadataJson ?? {}) as ExamScoreMetadata;
+      const summary = metadata.summary ?? {};
+      const score = Number(res.score || 0);
+      const passing = Number(res.exam.passingScore || 0);
+
+      totalFinalScore += score;
+      const isSubPassed = score >= passing;
+      if (!isSubPassed) allPassed = false; // Jika satu aja gagal, paket dianggap gagal (opsional tergantung aturan lo)
+
+      return {
+        examName: res.exam.examName,
+        score: score,
+        passingScore: passing,
+        status: isSubPassed ? 'passed' : 'failed',
+        stats: {
+          correct: summary.correctAnswers || 0,
+          wrong: summary.wrongAnswers || 0,
+          empty: summary.unanswered || 0,
+        },
+      };
+    });
+
+    return {
+      success: true,
+      message: 'Data skor paket berhasil diambil',
+      data: {
+        packageId: packageId,
+        totalScore: totalFinalScore,
+        isPackagePassed: allPassed,
+        completedExams: results.length,
+        totalExamsInPackage: subExams.length,
+        details: breakdown,
+      },
+    };
+  }
 }

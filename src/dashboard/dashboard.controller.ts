@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { PrismaService } from '../prisma/prisma.service';
+import type { Request } from 'express';
+import type { JwtRequestUser } from 'src/types/express';
 
 @Controller('dashboard')
 export class DashboardController {
@@ -15,12 +17,16 @@ export class DashboardController {
 
   @Get('summary')
   @UseGuards(AuthGuard('jwt'))
-  async getDashboardSummary(@Req() req: any) {
+  async getDashboardSummary(@Req() req: Request) {
     // Ambil userId dari payload JWT
-    const userId = req.user.userId;
+    const authUser = req.user as JwtRequestUser | undefined;
+    if (!authUser?.userId) {
+      throw new NotFoundException('User tidak ditemukan');
+    }
+    const userId = authUser.userId;
 
     // 1. Ambil info user
-    const user = await this.prisma.users.findUnique({
+    const userRecord = await this.prisma.users.findUnique({
       where: { id: userId },
       select: {
         username: true,
@@ -30,7 +36,7 @@ export class DashboardController {
     });
 
     // Proteksi: Jika user tidak ada di database, hentikan proses
-    if (!user) {
+    if (!userRecord) {
       throw new NotFoundException('User tidak ditemukan');
     }
 
@@ -48,13 +54,13 @@ export class DashboardController {
     });
 
     // Nama yang akan ditampilkan (prioritas first_name, lalu username)
-    const displayName = user.firstName || user.username;
+    const displayName = userRecord.firstName || userRecord.username;
 
     return {
       welcomeMessage: `Selamat berjuang di Pasti Lolos, ${displayName}!`,
       user: {
-        username: user.username,
-        profilePicture: user.profilePictureUrl,
+        username: userRecord.username,
+        profilePicture: userRecord.profilePictureUrl,
       },
       stats: {
         enrolledCourses,

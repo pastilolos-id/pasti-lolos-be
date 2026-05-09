@@ -1,5 +1,5 @@
 import { PassportStrategy } from '@nestjs/passport';
-import { Strategy, VerifyCallback } from 'passport-google-oauth20';
+import { Profile, Strategy, VerifyCallback } from 'passport-google-oauth20';
 import { Injectable } from '@nestjs/common';
 
 @Injectable()
@@ -14,19 +14,25 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     });
   }
 
-  async validate(
-    accessToken: string,
-    refreshToken: string,
-    profile: any,
+  validate(
+    _accessToken: string,
+    _refreshToken: string,
+    profile: Profile,
     done: VerifyCallback,
   ) {
     const { name, emails, photos, id } = profile;
+    const primaryEmail = emails?.[0]?.value;
+
+    if (!primaryEmail) {
+      return done(new Error('Google account does not provide email'));
+    }
+
     const user = {
       googleId: id,
-      email: emails[0].value,
-      firstName: name.givenName,
-      lastName: name.familyName,
-      picture: photos[0].value,
+      email: primaryEmail,
+      firstName: name?.givenName ?? '',
+      lastName: name?.familyName ?? '',
+      picture: photos?.[0]?.value,
     };
     done(null, user);
   }

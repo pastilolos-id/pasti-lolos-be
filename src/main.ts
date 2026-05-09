@@ -1,18 +1,21 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
-import { BadRequestException, ValidationError, ValidationPipe } from '@nestjs/common';
+import {
+  BadRequestException,
+  ValidationError,
+  ValidationPipe,
+} from '@nestjs/common';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
-import { error } from 'console';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(cookieParser());
-  app.enableCors()
-  app.useGlobalFilters(new PrismaExceptionFilter())
+  app.enableCors();
+  app.useGlobalFilters(new PrismaExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
-      stopAtFirstError: false, 
+      stopAtFirstError: false,
       whitelist: true, // Hacker kirim field aneh? Langsung dihapus/diabaikan.
       forbidNonWhitelisted: true, // Kalo ada field siluman, kirim error 400.
       transform: true, // Otomatis ubah string ke number (sangat membantu).
@@ -20,7 +23,8 @@ async function bootstrap() {
         return new BadRequestException({
           statusCode: 400,
           // error: 'Bad Request',
-          message: 'Error validation. Pastikan semua data sudah benar dan lengkap.',
+          message:
+            'Error validation. Pastikan semua data sudah benar dan lengkap.',
           errors: validationErrors.reduce((acc, error) => {
             // Ambil semua pesan error dari constraints validator (IsNotEmpty, Matches, dll)
             acc[error.property] = Object.values(error.constraints || {});

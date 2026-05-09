@@ -5,9 +5,7 @@ import {
   IsOptional,
   IsBoolean,
   IsObject,
-  IsInt, 
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
 export class CreateAnswerDto {
   @IsNotEmpty()

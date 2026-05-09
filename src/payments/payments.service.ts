@@ -1,13 +1,19 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 import { Prisma } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     private cloudinary: CloudinaryService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // FUNGSI SPESIFIK UNTUK EXAM
@@ -38,16 +44,17 @@ export class PaymentsService {
         orderItems: {
           some: {
             itemId: examId,
-            itemType: 'exam'
-          }
-        }
-      }
+            itemType: 'exam',
+          },
+        },
+      },
     });
 
     if (pendingOrder) {
       throw new BadRequestException({
         statusCode: 400,
-        message: 'Kamu masih memiliki transaksi pending untuk ujian ini. Tunggu konfirmasi admin atau hubungi CS.',
+        message:
+          'Kamu masih memiliki transaksi pending untuk ujian ini. Tunggu konfirmasi admin atau hubungi CS.',
       });
     }
 
@@ -57,27 +64,38 @@ export class PaymentsService {
     let couponId: number | null = null;
 
     if (discountCode) {
-      const coupon = await this.prisma.coupons.findUnique({ where: { couponCode: discountCode } });
+      const coupon = await this.prisma.coupons.findUnique({
+        where: { couponCode: discountCode },
+      });
       const now = new Date();
-      const isValid = coupon && coupon.isActive && now >= coupon.validFrom && now <= coupon.validUntil &&
-                      (coupon.maxUses === null || (coupon.usesCount ?? 0) < coupon.maxUses);
+      const isValid =
+        coupon &&
+        coupon.isActive &&
+        now >= coupon.validFrom &&
+        now <= coupon.validUntil &&
+        (coupon.maxUses === null || (coupon.usesCount ?? 0) < coupon.maxUses);
 
-      if (!isValid) throw new BadRequestException('Kupon tidak valid atau kadaluarsa');
-      
+      if (!isValid)
+        throw new BadRequestException('Kupon tidak valid atau kadaluarsa');
+
       couponId = coupon.id;
-      discountAmount = coupon.discountType === 'percentage' 
-        ? totalAmount.mul(Number(coupon.discountValue) / 100) 
-        : new Prisma.Decimal(coupon.discountValue);
+      discountAmount =
+        coupon.discountType === 'percentage'
+          ? totalAmount.mul(Number(coupon.discountValue) / 100)
+          : new Prisma.Decimal(coupon.discountValue);
     }
 
     const grandTotal = Prisma.Decimal.max(totalAmount.sub(discountAmount), 0);
 
     // --- 4. UPLOAD CLOUDINARY DI LUAR TRANSAKSI (Anti P2028) ---
     if (!file) throw new BadRequestException('Bukti pembayaran wajib diunggah');
-    const upload = await this.cloudinary.uploadFile(file, 'exam_payment_proofs');
+    const upload = await this.cloudinary.uploadFile(
+      file,
+      'exam_payment_proofs',
+    );
 
     // 5. TRANSAKSI DATABASE (Cepat karena upload sudah selesai)
-    return await this.prisma.$transaction(async (tx) => {
+    const checkoutResult = await this.prisma.$transaction(async (tx) => {
       // A. Buat Order
       const order = await tx.orders.create({
         data: {
@@ -90,22 +108,27 @@ export class PaymentsService {
           paymentStatus: 'pending',
           paymentMethod,
           orderItems: {
-            create: [{
-              itemType: 'exam',
-              itemId: examId,
-              itemName: exam.examName,
-              pricePerItem: totalAmount,
-              totalPrice: grandTotal,
-              courseId: 0,
-              metadataJson: { examId } as Prisma.JsonObject,
-            }],
+            create: [
+              {
+                itemType: 'exam',
+                itemId: examId,
+                itemName: exam.examName,
+                pricePerItem: totalAmount,
+                totalPrice: grandTotal,
+                courseId: 0,
+                metadataJson: { examId } as Prisma.JsonObject,
+              },
+            ],
           },
         },
       });
 
       // B. Update kuota kupon
       if (couponId) {
-        await tx.coupons.update({ where: { id: couponId }, data: { usesCount: { increment: 1 } } });
+        await tx.coupons.update({
+          where: { id: couponId },
+          data: { usesCount: { increment: 1 } },
+        });
       }
 
       // C. Record Payment
@@ -128,6 +151,68 @@ export class PaymentsService {
         grandTotal,
       };
     });
+
+    await this.notifyAdminsPendingExamPayment({
+      orderId: checkoutResult.orderId,
+      buyerUserId: userId,
+      examName: exam.examName,
+      grandTotal: checkoutResult.grandTotal,
+    });
+
+    return checkoutResult;
+  }
+
+  /** Role admin panel di codebase pakai `userRoleId: 3` (sinkron dengan @Roles('3')). */
+  private static readonly ADMIN_ROLE_ID = 3;
+
+  /**
+   * Notifikasi ke semua user admin: ada pembayaran manual baru yang menunggu verifikasi.
+   */
+  private async notifyAdminsPendingExamPayment(params: {
+    orderId: number;
+    buyerUserId: number;
+    examName: string;
+    grandTotal: Prisma.Decimal;
+  }) {
+    const buyer = await this.prisma.users.findUnique({
+      where: { id: params.buyerUserId },
+      select: {
+        username: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+      },
+    });
+
+    const buyerLabel =
+      [buyer?.firstName, buyer?.lastName].filter(Boolean).join(' ').trim() ||
+      buyer?.username ||
+      buyer?.email ||
+      `User #${params.buyerUserId}`;
+
+    const admins = await this.prisma.users.findMany({
+      where: {
+        userRoleId: PaymentsService.ADMIN_ROLE_ID,
+        status: 'active',
+      },
+      select: { id: true },
+    });
+
+    const totalStr = Number(params.grandTotal).toLocaleString('id-ID');
+    const title = 'Pembayaran baru menunggu verifikasi';
+    const message = `${buyerLabel} mengunggah bukti pembayaran untuk "${params.examName}" (Order #${params.orderId}, Rp ${totalStr}).`;
+
+    await Promise.all(
+      admins.map((a) =>
+        this.notificationsService.create({
+          userId: a.id,
+          title,
+          message,
+          type: 'warning',
+          link: `/admin/payments/pending`,
+        }),
+      ),
+    );
   }
 
   // Fungsi Approve oleh Admin[cite: 5]
@@ -135,16 +220,17 @@ export class PaymentsService {
 
   // src/payments/payments.service.ts
 
-  async approveManualPayment(orderId: number) { // Ganti jadi number
-    return await this.prisma.$transaction(async (tx) => {
+  async approveManualPayment(orderId: number) {
+    // Ganti jadi number
+    const txResult = await this.prisma.$transaction(async (tx) => {
       // 1. Ambil detail order
       const order = await tx.orders.findUnique({
         where: { id: orderId }, // Sekarang sudah match (number)
-        include: { orderItems: true }
+        include: { orderItems: true },
       });
 
       if (!order) throw new NotFoundException('Order tidak ditemukan');
-      
+
       if (order.orderStatus === 'completed') {
         throw new BadRequestException('Order ini sudah diproses sebelumnya.');
       }
@@ -153,58 +239,67 @@ export class PaymentsService {
       // PENTING: Tambahkan include orderItems di sini juga agar variabel 'updatedOrder' punya datanya
       const updatedOrder = await tx.orders.update({
         where: { id: orderId },
-        data: { 
-          orderStatus: 'completed', 
-          paymentStatus: 'paid' 
+        data: {
+          orderStatus: 'completed',
+          paymentStatus: 'paid',
         },
-        include: { orderItems: true } // Tambahkan ini biar error Property 'orderItems' does not exist hilang
+        include: { orderItems: true }, // Tambahkan ini biar error Property 'orderItems' does not exist hilang
       });
 
       // 3. Update status di tabel Payments
       await tx.payments.updateMany({
         where: { orderId: order.id },
-        data: { paymentStatus: 'completed' } 
+        data: { paymentStatus: 'completed' },
       });
 
       // 4. --- AUTO ENROLL LOGIC ---
       // Pakai updatedOrder yang sudah include orderItems
       const parentExamIds = updatedOrder.orderItems
-        .filter(item => item.itemType === 'exam')
-        .map(item => item.itemId);
+        .filter((item) => item.itemType === 'exam')
+        .map((item) => item.itemId);
 
       if (parentExamIds.length > 0) {
-        const subExams = await tx.exams.findMany({ 
+        const subExams = await tx.exams.findMany({
           where: { packageId: { in: parentExamIds } },
-          select: { id: true }
+          select: { id: true },
         });
-        
-        const childExamIds = subExams.map(se => se.id);
-        const allExamIdsToEnroll = [...new Set([...parentExamIds, ...childExamIds])];
+
+        const childExamIds = subExams.map((se) => se.id);
+        const allExamIdsToEnroll = [
+          ...new Set([...parentExamIds, ...childExamIds]),
+        ];
 
         await tx.userExams.createMany({
-          data: allExamIdsToEnroll.map(id => ({
+          data: allExamIdsToEnroll.map((id) => ({
             userId: updatedOrder.userId,
             examId: id,
             status: 'not_started',
           })),
-          skipDuplicates: true, 
+          skipDuplicates: true,
         });
       }
 
       // 5. Kirim Notifikasi
-      await tx.notifications.create({
+      const notification = await tx.notifications.create({
         data: {
           userId: updatedOrder.userId,
-          notificationType: 'payment_approved',
+          type: 'success',
           title: 'Akses Ujian Terbuka!',
-          message: `Pembayaran untuk ${updatedOrder.orderItems[0].itemName} berhasil diverifikasi. Selamat belajar!`,
-        }
+          message: `Pembayaran untuk ${updatedOrder.orderItems[0]?.itemName ?? 'pesanan'} berhasil diverifikasi. Selamat belajar!`,
+        },
       });
 
-      return { 
-        message: `Order #${orderId} sukses, status 'completed', dan akses dibuka.` 
+      return {
+        message: `Order #${orderId} sukses, status 'completed', dan akses dibuka.`,
+        notification,
       };
     });
+
+    this.notificationsService.deliverRealtime(txResult.notification);
+
+    return {
+      message: txResult.message,
+    };
   }
 
   async approveBulkPayments(orderIds: number[]) {
@@ -212,9 +307,9 @@ export class PaymentsService {
       // 1. Update status di tabel Orders
       await tx.orders.updateMany({
         where: { id: { in: orderIds } },
-        data: { 
-          orderStatus: 'completed', 
-          paymentStatus: 'paid' 
+        data: {
+          orderStatus: 'completed',
+          paymentStatus: 'paid',
         },
       });
 
@@ -224,9 +319,9 @@ export class PaymentsService {
         data: { paymentStatus: 'completed' },
       });
 
-      return { 
-        success: true, 
-        message: `${orderIds.length} pembayaran berhasil disetujui sekaligus.` 
+      return {
+        success: true,
+        message: `${orderIds.length} pembayaran berhasil disetujui sekaligus.`,
       };
     });
   }
@@ -250,8 +345,8 @@ export class PaymentsService {
         error: 'Not Found',
         message: 'Validation failed for one or more fields',
         errors: {
-          examId: ['Ujian tidak ditemukan.']
-        }
+          examId: ['Ujian tidak ditemukan.'],
+        },
       });
     }
 
@@ -261,8 +356,8 @@ export class PaymentsService {
         error: 'Bad Request',
         message: 'Validation failed for one or more fields',
         errors: {
-          couponCode: ['Voucher tidak valid atau sudah tidak aktif.']
-        }
+          couponCode: ['Voucher tidak valid atau sudah tidak aktif.'],
+        },
       });
     }
 
@@ -272,8 +367,8 @@ export class PaymentsService {
         error: 'Bad Request',
         message: 'Validation failed for one or more fields',
         errors: {
-          couponCode: ['Masa berlaku voucher telah habis.']
-        }
+          couponCode: ['Masa berlaku voucher telah habis.'],
+        },
       });
     }
 
@@ -283,8 +378,8 @@ export class PaymentsService {
         error: 'Bad Request',
         message: 'Validation failed for one or more fields',
         errors: {
-          couponCode: ['Kuota pemakaian voucher sudah penuh.']
-        }
+          couponCode: ['Kuota pemakaian voucher sudah penuh.'],
+        },
       });
     }
 
@@ -309,9 +404,8 @@ export class PaymentsService {
         originalPrice: originalPrice,
         discount: discountAmount,
         totalPay: finalPrice,
-        couponUsed: coupon.couponCode
-      }
+        couponUsed: coupon.couponCode,
+      },
     };
   }
-  
 }

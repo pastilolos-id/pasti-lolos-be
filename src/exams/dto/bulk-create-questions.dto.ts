@@ -1,4 +1,12 @@
-import { IsNumber, IsString, IsOptional, IsArray, ValidateNested, IsBoolean, IsNotEmpty } from 'class-validator';
+import {
+  IsNumber,
+  IsString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsBoolean,
+  IsNotEmpty,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateAnswerNestedDto {

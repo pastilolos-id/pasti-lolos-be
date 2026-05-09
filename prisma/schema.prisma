@@ -63,7 +63,6 @@ model Users {
   userExamAnswersGrader               UserExamAnswers[]   @relation("UserExamAnswerGrader")
   userExamAnswersLastModified         UserExamAnswers[]   @relation("UserExamAnswerLastModifiedBy")
   notificationsReceived               Notifications[]     @relation("NotificationsReceived")
-  notificationsSent                   Notifications[]     @relation("NotificationSender")
   reviewsSubmitted                    Reviews[]           @relation("ReviewsSubmitted")
   reviewsApproved                     Reviews[]           @relation("ReviewApprovedBy")
   couponsCreatedBy                    Coupons[]           @relation("CouponCreatedBy")
@@ -686,31 +685,20 @@ model UserExamAnswers {
 }
 
 model Notifications {
-  id                Int       @id @default(autoincrement())
-  userId            Int       @map("user_id")
-  notificationType  String    @map("notification_type") @db.VarChar(50)
-  title             String    @db.VarChar(255)
-  message           String
-  isRead            Boolean?  @default(false) @map("is_read")
-  sentAt            DateTime  @default(now()) @map("sent_at") @db.Timestamptz(6)
-  readAt            DateTime? @map("read_at") @db.Timestamptz(6)
-  targetUrl         String?   @map("target_url")
-  priority          String?   @default("normal") @db.VarChar(50) // ENUM 'low', 'normal', 'high'
-  iconUrl           String?   @map("icon_url")
-  senderType        String?   @map("sender_type") @db.VarChar(50)
-  senderId          Int?      @map("sender_id")
-  relatedEntityType String?   @map("related_entity_type") @db.VarChar(100)
-  relatedEntityId   Int?      @map("related_entity_id")
-  pushSent          Boolean?  @default(false) @map("push_sent")
-  emailSent         Boolean?  @default(false) @map("email_sent")
-  smsSent           Boolean?  @default(false) @map("sms_sent")
-  metadataJson      Json?     @map("metadata_json")
-  internalNotes     String?   @map("internal_notes")
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  user              Users     @relation("NotificationsReceived", fields: [userId], references: [id], onDelete: Cascade)
-  sender            Users?    @relation("NotificationSender", fields: [senderId], references: [id])
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  title     String   @db.VarChar(255)
+  message   String   @db.Text
+  /// Kolom DB dari migration awal: `notification_type` (bukan `type`).
+  type      String   @default("info") @map("notification_type") @db.VarChar(50)
+  /// Kolom DB dari migration awal: `target_url` (bukan `link`).
+  link      String?  @map("target_url")
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  user Users @relation("NotificationsReceived", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
   @@map("notifications")
 }
 

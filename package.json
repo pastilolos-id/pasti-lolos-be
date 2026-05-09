@@ -29,7 +29,9 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.19",
     "@nestjs/throttler": "^6.5.0",
+    "@nestjs/websockets": "^11.1.19",
     "@prisma/client": "^6.19.1",
     "@types/cookie-parser": "^1.4.10",
     "bcrypt": "^6.0.0",
@@ -46,6 +48,7 @@
     "prisma": "^6.19.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.3",
     "streamifier": "^0.1.1"
   },
   "devDependencies": {
@@ -62,6 +65,7 @@
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
+    "@types/pdfkit": "^0.17.6",
     "@types/streamifier": "^0.1.2",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^8.56.0",

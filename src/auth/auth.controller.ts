@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   UseGuards,
   Req,
@@ -14,8 +15,9 @@ import { AuthService } from './auth.service';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { RegisterDto } from './dto/register.dto'; // Import DTO
 import { LoginDto } from './dto/login.dto'; // Import DTO
-import express from 'express';
-import type { Response } from 'express';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import type { Request, Response } from 'express';
+import type { JwtRequestUser } from 'src/types/express';
 
 interface GoogleUserPayload {
   googleId: string;
@@ -66,16 +68,13 @@ export class AuthController {
   @Get('google')
   @UseGuards(AuthGuard('google'), ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async googleAuth() {
+  googleAuth() {
     // Biarkan kosong, Passport yang urus redirect-nya
   }
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  async googleAuthRedirect(
-    @Req() req: express.Request,
-    @Res() res: express.Response,
-  ) {
+  async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
     try {
       const user = req.user;
 
@@ -100,17 +99,17 @@ export class AuthController {
 
       // 4. Redirect ke halaman utama (Home/Dashboard)
       return res.redirect(`http://localhost:3000/home`);
-
     } catch (error) {
-      // KALO GAGAL: 
+      // KALO GAGAL:
       console.error('Google Auth Error:', error);
 
       // Redirect balik ke login sambil bawa pesan error lewat query param
       // Supaya FE bisa nampilin toast/notifikasi error ke user
-      const errorMessage = encodeURIComponent('Login Google gagal, silakan coba lagi.');
+      const errorMessage = encodeURIComponent(
+        'Login Google gagal, silakan coba lagi.',
+      );
       return res.redirect(`http://localhost:3000/login?error=${errorMessage}`);
     }
-    
   }
   // @Get('google/callback')
   // @UseGuards(AuthGuard('google'))
@@ -139,12 +138,12 @@ export class AuthController {
   //   });
 
   //   return res.redirect(`http://localhost:3000/home`);
-  // } 
+  // }
 
   @Get('logout')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async logout(@Res({ passthrough: true }) res: Response) {
+  logout(@Res({ passthrough: true }) res: Response) {
     // 1. Hapus cookie dengan cara menimpa nilainya dan set expired ke masa lalu
     res.cookie('token', '', {
       httpOnly: true,
@@ -161,8 +160,23 @@ export class AuthController {
 
   @UseGuards(AuthGuard('jwt')) // Dijagain biar cuma yang punya token bisa masuk
   @Get('myProfile')
-  async getMe(@Req() req: any) {
+  async getMe(@Req() req: Request) {
     // req.user.userId dapet dari logic JwtStrategy lo[cite: 1, 3]
-    return this.authService.getProfile(req.user.userId);
+    const user = req.user as JwtRequestUser | undefined;
+    if (!user?.userId) {
+      throw new UnauthorizedException('User tidak valid');
+    }
+
+    return this.authService.getProfile(user.userId);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Patch('profile')
+  async updateProfile(@Req() req: Request, @Body() dto: UpdateProfileDto) {
+    const user = req.user as JwtRequestUser | undefined;
+    if (!user?.userId) {
+      throw new UnauthorizedException('User tidak valid');
+    }
+    return this.authService.updateProfile(user.userId, dto);
   }
 }

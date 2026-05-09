@@ -60,7 +60,7 @@ export class CreateExamDto {
   @IsOptional()
   @IsBoolean()
   randomizeQuestions?: boolean;
-  
+
   @IsOptional()
   // Biar error "should not exist" hilang, tambahkan ini:
   metadataJson?: any;
