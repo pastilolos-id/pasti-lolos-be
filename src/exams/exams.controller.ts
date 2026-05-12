@@ -19,6 +19,7 @@ import {
   Delete,
   ParseIntPipe,
 } from '@nestjs/common';
+import { ApiConsumes, ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { ExamsService } from './exams.service';
 import { ExamReviewService } from './exam-review.service';
 import { AuthGuard } from '@nestjs/passport';
@@ -39,6 +40,8 @@ interface RequestWithUser extends Request {
   user?: JwtRequestUser;
 }
 
+@ApiTags('Exams')
+@ApiCookieAuth()
 @Controller('exams')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class ExamsController {
@@ -205,6 +208,7 @@ export class ExamsController {
   }
 
   @Post('checkout')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async checkout(
     @UploadedFile(

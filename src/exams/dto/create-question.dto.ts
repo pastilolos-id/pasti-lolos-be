@@ -6,7 +6,9 @@ import {
   IsEnum,
   IsBoolean,
   IsArray,
+  IsUrl,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateQuestionDto {
   @IsNotEmpty()
@@ -64,4 +66,11 @@ export class CreateQuestionDto {
   @IsOptional()
   @IsNumberString()
   orderInExam?: string; // Urutan soal dalam ujian, kalau mau langsung masukin ke exam
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === '' || value === null || value === undefined ? undefined : value,
+  )
+  @IsUrl({ require_protocol: true, protocols: ['http', 'https'] })
+  imageUrl?: string;
 }
