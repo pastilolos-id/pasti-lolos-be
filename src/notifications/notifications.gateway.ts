@@ -39,6 +39,10 @@ export type NotificationRealtimePayload = {
   createdAt: string;
 };
 
+export type NotificationReadPayload =
+  | { id: number; isRead: boolean }
+  | { allRead: true };
+
 @Injectable()
 @WebSocketGateway({
   namespace: '/notifications',
@@ -74,7 +78,7 @@ export class NotificationsGateway implements OnGatewayConnection {
         client.disconnect(true);
         return;
       }
-      client.data.userId = userId;
+      (client.data as { userId?: number }).userId = userId;
       void client.join(this.roomFor(userId));
     } catch {
       client.disconnect(true);
@@ -83,5 +87,10 @@ export class NotificationsGateway implements OnGatewayConnection {
 
   emitToUser(userId: number, payload: NotificationRealtimePayload): void {
     this.server.to(this.roomFor(userId)).emit('notification', payload);
+  }
+
+  /** FE: update badge / row tanpa polling (bukan notifikasi baru). */
+  emitNotificationRead(userId: number, payload: NotificationReadPayload): void {
+    this.server.to(this.roomFor(userId)).emit('notification:read', payload);
   }
 }
