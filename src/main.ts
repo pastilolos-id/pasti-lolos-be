@@ -7,6 +7,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -48,7 +49,18 @@ async function bootstrap() {
   });
   // ------------------------
 
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Pasti Lolos API')
+    .setDescription('API documentation for Pasti Lolos')
+    .setVersion('1.0')
+    .addCookieAuth('token')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api-docs', app, document);
+
   await app.listen(4000, '0.0.0.0');
   console.log(`Backend "Pasti Lolos" jalan di: http://localhost:4000`);
+  console.log(`Swagger UI: http://localhost:4000/api-docs`);
 }
 void bootstrap();
