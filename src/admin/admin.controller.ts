@@ -7,12 +7,15 @@ import {
   UseGuards,
   ParseIntPipe,
 } from '@nestjs/common';
+import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AuthGuard } from '@nestjs/passport';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { Roles } from 'src/common/decorators/roles.decorators';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 
+@ApiTags('Admin')
+@ApiCookieAuth()
 @Controller('admin')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class AdminController {
