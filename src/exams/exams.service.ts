@@ -12,9 +12,16 @@ import { Answers, ExamQuestions, Prisma, Questions } from '@prisma/client';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { AddQuestionToExamDto } from './dto/add-question-to-exam.dto';
 import { CreateAnswerDto } from './dto/create-answer.dto';
-import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 import { BulkCreateQuestionsDto } from './dto/bulk-create-questions.dto';
 import { SubmitExamDto } from './dto/submit-exam.dto';
+import type { RemoteImageUploadResult } from '../common/cloudinary/remote-image-upload.types';
+import { NotificationsService } from '../notifications/notifications.service';
+
+type CloudinaryRemoteImageUpload = (
+  url: string,
+  folder?: string,
+) => Promise<RemoteImageUploadResult>;
 
 interface SubmitAnswerResult {
   id: number;
@@ -46,13 +53,36 @@ interface ExamScoreMetadata {
   details?: unknown[];
 }
 
+/** Narik string URL gambar dari body yang sudah divalidasi (aman untuk type-aware ESLint). */
+function toOptionalImageUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const t = value.trim();
+  return t.length > 0 ? t : undefined;
+}
+
 @Injectable()
 export class ExamsService {
   // cloudinary: any;
   constructor(
     private prisma: PrismaService,
-    private cloudinary: CloudinaryService,
+    private cloudinaryService: CloudinaryService,
+    private notificationsService: NotificationsService,
   ) {}
+
+  /** URL publik gambar → Cloudinary `secure_url`; kosong/null → null */
+  private async resolveQuestionImageUrl(
+    imageUrl: string | undefined | null,
+  ): Promise<string | null> {
+    if (!imageUrl?.trim()) {
+      return null;
+    }
+    const trimmed = imageUrl.trim();
+    const cld = this.cloudinaryService as unknown as {
+      uploadFromRemoteUrl: CloudinaryRemoteImageUpload;
+    };
+    const result = await cld.uploadFromRemoteUrl(trimmed);
+    return result.secureUrl.length > 0 ? result.secureUrl : null;
+  }
 
   // --- CRUD EXAMS ---
   async createExam(
@@ -187,11 +217,17 @@ export class ExamsService {
           examType: true,
           price: true, // Prisma mengambil ini sebagai Decimal/String
           durationMinutes: true,
+          totalQuestions: true,
           subject: {
             select: { subjectName: true },
           },
           _count: {
             select: { examQuestions: true },
+          },
+          subExams: {
+            select: {
+              _count: { select: { examQuestions: true } },
+            },
           },
         },
         orderBy: {
@@ -210,10 +246,30 @@ export class ExamsService {
     ]);
 
     // TRANSFORMASI DI SINI: Ubah price dari Decimal/String ke Number
-    const data = rawExams.map((exam) => ({
-      ...exam,
-      price: Number(exam.price), // Konversi eksplisit ke number
-    }));
+    // Jumlah soal: parent + semua sub-exam (paket), fallback ke kolom totalQuestions
+    const data = rawExams.map((exam) => {
+      const questionsOnParent = exam._count.examQuestions;
+      const questionsOnChildren = exam.subExams.reduce(
+        (sum, sub) => sum + sub._count.examQuestions,
+        0,
+      );
+      const fromRelations = questionsOnParent + questionsOnChildren;
+      const jumlahSoal =
+        fromRelations > 0 ? fromRelations : (exam.totalQuestions ?? 0);
+
+      return {
+        id: exam.id,
+        examName: exam.examName,
+        description: exam.description,
+        examType: exam.examType,
+        durationMinutes: exam.durationMinutes,
+        totalQuestions: jumlahSoal,
+        subject: exam.subject,
+        _count: exam._count,
+        price: Number(exam.price),
+        jumlahSoal,
+      };
+    });
 
     return {
       data,
@@ -423,6 +479,20 @@ export class ExamsService {
       );
     }
 
+    let resolvedImageUrl: string | null = null;
+    try {
+      resolvedImageUrl = await this.resolveQuestionImageUrl(
+        toOptionalImageUrl((data as { imageUrl?: unknown }).imageUrl),
+      );
+    } catch (err: unknown) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Gagal memproses gambar soal',
+      );
+    }
+
     // Gunakan Transaction agar pembuatan soal dan koneksi ke ujian aman (atomic)
     return this.prisma.$transaction(async (tx) => {
       // 1. Proses Pembuatan Soal
@@ -437,6 +507,7 @@ export class ExamsService {
             ? parseInt(data.timeLimitPerQuestion, 10)
             : null,
           isActive: data.isActive ?? true,
+          imageUrl: resolvedImageUrl,
           tags: data.tags
             ? (data.tags as Prisma.InputJsonValue)
             : Prisma.JsonNull,
@@ -956,6 +1027,14 @@ export class ExamsService {
       },
     });
 
+    await this.notificationsService.notifyByEvent({
+      event: 'exam_submitted_student',
+      userId,
+      itemName: attempt.exam.examName,
+      score: totalScore,
+      passed: isPassed,
+    });
+
     // RETURN RESPONSE UNTUK FRONTEND
     return {
       success: true,
@@ -1362,7 +1441,7 @@ export class ExamsService {
         throw new BadRequestException('Bukti pembayaran wajib diunggah');
 
       // Tambahkan timeout 1 menit untuk mengatasi koneksi lambat
-      const upload = await this.cloudinary.uploadFile(
+      const upload = await this.cloudinaryService.uploadFile(
         file,
         'exam_payment_proofs',
       );
@@ -1370,7 +1449,7 @@ export class ExamsService {
     }
 
     // 3. EKSEKUSI TRANSAKSI DATABASE
-    return await this.prisma.$transaction(async (tx) => {
+    const checkout = await this.prisma.$transaction(async (tx) => {
       // A. Buat Order[cite: 1]
       const order = await tx.orders.create({
         data: {
@@ -1446,6 +1525,30 @@ export class ExamsService {
         grandTotal: grandTotal,
       };
     });
+
+    if (isFree) {
+      await this.notificationsService.notifyByEvent({
+        event: 'free_exam_activated_student',
+        userId,
+        itemName: exam.examName,
+      });
+      return checkout;
+    }
+
+    await this.notificationsService.notifyAdminsPendingPayment({
+      orderId: checkout.orderId,
+      buyerUserId: userId,
+      itemName: exam.examName,
+      itemType: 'exam',
+      grandTotal: checkout.grandTotal,
+    });
+    await this.notificationsService.notifyByEvent({
+      event: 'payment_pending_student',
+      userId,
+      itemName: exam.examName,
+    });
+
+    return checkout;
   }
   // async processExamCheckout(
   //   examId: number,
@@ -1551,7 +1654,7 @@ export class ExamsService {
   //     }
 
   //     // C. Upload Bukti & Record Payment
-  //     const upload = await this.cloudinary.uploadFile(
+  //     const upload = await this.cloudinaryService.uploadFile(
   //       file,
   //       'exam_payment_proofs',
   //     );
@@ -1667,10 +1770,34 @@ export class ExamsService {
       );
     }
 
+    const resolvedImageUrls: (string | null)[] = [];
+    for (let i = 0; i < dto.questions.length; i++) {
+      try {
+        resolvedImageUrls.push(
+          await this.resolveQuestionImageUrl(
+            toOptionalImageUrl(
+              (dto.questions[i] as { imageUrl?: unknown }).imageUrl,
+            ),
+          ),
+        );
+      } catch (err: unknown) {
+        const base =
+          err instanceof BadRequestException
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Gagal mengunggah gambar dari URL';
+        throw new BadRequestException(`Soal ke-${i + 1}: ${base}`);
+      }
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const results: Questions[] = [];
 
-      for (const q of dto.questions) {
+      for (let i = 0; i < dto.questions.length; i++) {
+        const q = dto.questions[i];
+        const imageUrlFinal = resolvedImageUrls[i];
+
         // Validasi manual lo tetap gue jaga di sini
         if (!q.questionText || q.questionText.trim() === '') {
           throw new BadRequestException(
@@ -1702,12 +1829,13 @@ export class ExamsService {
             difficultyLevel: q.difficultyLevel || 'medium',
             createdByUserId: userId,
             isActive: true,
+            imageUrl: imageUrlFinal,
             answers: {
-              create: q.answers.map((a, i) => {
+              create: q.answers.map((a, j) => {
                 // Validasi jawaban
                 if (!a.label || !a.answerText || a.isCorrect === undefined) {
                   throw new BadRequestException(
-                    `Answer ke-${i + 1} tidak lengkap`,
+                    `Answer ke-${j + 1} tidak lengkap`,
                   );
                 }
 
