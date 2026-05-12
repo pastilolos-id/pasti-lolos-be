@@ -11,16 +11,20 @@ import {
   Query,
   BadRequestException,
 } from '@nestjs/common';
+import { ApiConsumes, ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { BankSoalService } from './questions-bank.service';
 
+@ApiTags('Questions Bank')
+@ApiCookieAuth()
 @Controller('bank-soal')
 @UseGuards(AuthGuard('jwt'))
 export class BankSoalController {
   constructor(private readonly bankSoalService: BankSoalService) {}
 
   @Post('upload')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async upload(
     @UploadedFile() file: Express.Multer.File,
