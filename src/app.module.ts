@@ -19,7 +19,7 @@ import { APP_GUARD } from '@nestjs/core';
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // Time to live (dalam milidetik) = 60 detik
-        limit: 20, // Maksimal 10 request per TTL
+        limit: 200, // Maksimal 200 request per TTL
       },
     ]),
     // 1. Module untuk membaca file .env
