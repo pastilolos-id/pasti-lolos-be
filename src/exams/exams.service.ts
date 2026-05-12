@@ -4,21 +4,47 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExamDto } from './dto/create-exam.dto';
-import {
-  Answers,
-  ExamQuestions,
-  Exams,
-  Prisma,
-  Questions,
-} from '@prisma/client';
+import { Answers, ExamQuestions, Prisma, Questions } from '@prisma/client';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { AddQuestionToExamDto } from './dto/add-question-to-exam.dto';
 import { CreateAnswerDto } from './dto/create-answer.dto';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
-// import { session } from 'passport';
+import { BulkCreateQuestionsDto } from './dto/bulk-create-questions.dto';
+import { SubmitExamDto } from './dto/submit-exam.dto';
+
+interface SubmitAnswerResult {
+  id: number;
+  questionId: number;
+  selectedAnswerId: number | null;
+  updatedAt: Date;
+}
+
+interface VoucherInput {
+  couponCode: string;
+  discountType: string;
+  discountValue: number | string;
+  validFrom: string | number | Date;
+  validUntil: string | number | Date;
+  maxUses: number;
+  examIds?: number[];
+}
+
+interface ExamScoreSummary {
+  totalQuestions?: number;
+  correctAnswers?: number;
+  wrongAnswers?: number;
+  unanswered?: number;
+  result?: string;
+}
+
+interface ExamScoreMetadata {
+  summary?: ExamScoreSummary;
+  details?: unknown[];
+}
 
 @Injectable()
 export class ExamsService {
@@ -29,60 +55,58 @@ export class ExamsService {
   ) {}
 
   // --- CRUD EXAMS ---
-  async createExam(data: CreateExamDto, userId: number): Promise<Exams> {
-    // Validasi dasar userId
+  async createExam(
+    data: CreateExamDto,
+    userId: number,
+  ): Promise<{ message: string }> {
     if (!userId) {
       throw new BadRequestException('User ID tidak valid');
     }
 
-    return this.prisma.exams.create({
+    const parsedPackageId = data.packageId
+      ? parseInt(data.packageId.toString(), 10)
+      : null;
+
+    const packageIdFinal =
+      parsedPackageId && !isNaN(parsedPackageId) ? parsedPackageId : null;
+
+    await this.prisma.exams.create({
       data: {
         examName: data.examName,
         description: data.description ?? null,
-        durationMinutes: parseInt(data.durationMinutes, 10),
+        durationMinutes: parseInt(data.durationMinutes.toString(), 10),
         examType: data.examType,
         status: data.status ?? 'draft',
-        // Handling DateTime
+        packageId: packageIdFinal,
+        subjectId: parseInt(data.subjectId.toString(), 10),
+        createdByUserId: userId,
         startTime: data.startTime ? new Date(data.startTime) : null,
         endTime: data.endTime ? new Date(data.endTime) : null,
-
-        // Handling Decimal (Prisma.Decimal)
         passingScore: data.passingScore
           ? new Prisma.Decimal(data.passingScore)
           : null,
         price: data.price
           ? new Prisma.Decimal(data.price)
           : new Prisma.Decimal(0),
-
-        // Handling Int
         attemptsAllowed: data.attemptsAllowed
-          ? parseInt(data.attemptsAllowed, 10)
+          ? parseInt(data.attemptsAllowed.toString(), 10)
           : 1,
-        // Handling Boolean (Default di DB sudah ada, tapi ini buat jaga-jaga)
         randomizeQuestions: data.randomizeQuestions ?? true,
-
-        // Relasi 1: Subject (BUMN/CPNS)
-        subject: {
-          connect: { id: parseInt(data.subjectId, 10) },
-        },
-
-        // Relasi 2: Creator
-        createdByUser: {
-          connect: { id: userId },
-        },
-
-        // Metadata JSON (Type-safe casting)
         metadataJson: {
           source: 'admin_panel',
           created_at_iso: new Date().toISOString(),
+          ...((data.metadataJson as object) || {}),
         } as Prisma.InputJsonValue,
       },
     });
+
+    return {
+      message: 'Berhasil insert data exam',
+    };
   }
 
   async updateExam(id: number, userId: number, data: Partial<CreateExamDto>) {
     const exam = await this.prisma.exams.findUnique({ where: { id } });
-    
     if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
     // Update data dengan konversi tipe yang sesuai schema (Decimal & Int)
@@ -91,18 +115,24 @@ export class ExamsService {
       data: {
         examName: data.examName,
         description: data.description,
-        durationMinutes: data.durationMinutes ? parseInt(data.durationMinutes, 10) : undefined,
+        durationMinutes: data.durationMinutes
+          ? parseInt(data.durationMinutes.toString(), 10)
+          : undefined,
         examType: data.examType,
         status: data.status, // Bisa buat ganti status manual
         startTime: data.startTime ? new Date(data.startTime) : undefined,
         endTime: data.endTime ? new Date(data.endTime) : undefined,
-        passingScore: data.passingScore ? new Prisma.Decimal(data.passingScore) : undefined,
+        passingScore: data.passingScore
+          ? new Prisma.Decimal(data.passingScore)
+          : undefined,
         price: data.price ? new Prisma.Decimal(data.price) : undefined,
-        attemptsAllowed: data.attemptsAllowed ? parseInt(data.attemptsAllowed, 10) : undefined,
+        attemptsAllowed: data.attemptsAllowed
+          ? parseInt(data.attemptsAllowed, 10)
+          : undefined,
         randomizeQuestions: data.randomizeQuestions,
         // Update metadata biar ketahuan siapa yang terakhir ngubah
         metadataJson: {
-          ...(exam.metadataJson as object || {}),
+          ...((exam.metadataJson as object) || {}),
           lastUpdatedBy: userId,
           updatedAt: new Date().toISOString(),
         } as Prisma.InputJsonValue,
@@ -115,7 +145,7 @@ export class ExamsService {
     const exam = await this.prisma.exams.findUnique({ where: { id } });
     if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
-    // Karena di tabel lo (kolom 12) ada kolom 'status', 
+    // Karena di tabel lo (kolom 12) ada kolom 'status',
     // kita set statusnya jadi 'archived' atau 'deleted' sebagai soft delete.
     return this.prisma.exams.update({
       where: { id },
@@ -124,22 +154,221 @@ export class ExamsService {
   }
 
   // --- GET EXAM PUBLISHING ---
-  async findAllPublished() {
-    return this.prisma.exams.findMany({
-      where: {
-        status: 'published',
+  async findAllPublished(
+    subjectName?: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    if (!subjectName) {
+      throw new BadRequestException('Kategori (BUMN/CPNS) harus dipilih!');
+    }
+
+    const safeLimit = [10, 30, 50].includes(Number(limit)) ? Number(limit) : 10;
+    const skip = (Number(page) - 1) * safeLimit;
+
+    const [rawExams, total] = await Promise.all([
+      this.prisma.exams.findMany({
+        where: {
+          status: 'published',
+          packageId: null,
+          subject: {
+            subjectName: {
+              equals: subjectName,
+              mode: 'insensitive',
+            },
+          },
+        },
+        take: safeLimit,
+        skip: skip,
+        select: {
+          id: true,
+          examName: true,
+          description: true,
+          examType: true,
+          price: true, // Prisma mengambil ini sebagai Decimal/String
+          durationMinutes: true,
+          subject: {
+            select: { subjectName: true },
+          },
+          _count: {
+            select: { examQuestions: true },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      this.prisma.exams.count({
+        where: {
+          status: 'published',
+          packageId: null,
+          subject: {
+            subjectName: { equals: subjectName, mode: 'insensitive' },
+          },
+        },
+      }),
+    ]);
+
+    // TRANSFORMASI DI SINI: Ubah price dari Decimal/String ke Number
+    const data = rawExams.map((exam) => ({
+      ...exam,
+      price: Number(exam.price), // Konversi eksplisit ke number
+    }));
+
+    return {
+      data,
+      meta: {
+        total,
+        page: Number(page),
+        lastPage: Math.ceil(total / safeLimit),
+        limit: safeLimit,
       },
+    };
+  }
+  async getPackageDetail(examId: number, userId: number) {
+    // 1. Paksa ID jadi Number
+    const uId = Number(userId);
+    const eId = Number(examId);
+
+    // 2. Ambil data Paket Utama
+    const parentExam = await this.prisma.exams.findUnique({
+      where: { id: eId },
       include: {
-        subject: true, // Biar dapet info ini ujian BUMN, CPNS, dll
-        _count: {
-          select: { examQuestions: true } // Biar tau jumlah soalnya
-        }
-      },
-      orderBy: {
-        createdAt: 'desc', // Ujian terbaru muncul paling atas
+        subject: true,
+        userExams: {
+          where: { userId: uId },
+        },
       },
     });
+
+    if (!parentExam) throw new NotFoundException('Paket ujian tidak ditemukan');
+
+    // 3. Tarik data pengerjaan user secara mandiri untuk menghindari join error
+    const allUserAttempts = await this.prisma.userExams.findMany({
+      where: { userId: uId },
+      select: {
+        id: true,
+        examId: true,
+        status: true,
+        score: true,
+      },
+    });
+
+    // 4. Cek Order
+    const pendingOrder = await this.prisma.orders.findFirst({
+      where: {
+        userId: uId,
+        orderStatus: 'pending',
+        orderItems: { some: { itemId: eId, itemType: 'exam' } },
+      },
+    });
+
+    // 5. Ambil daftar Sub-Ujian
+    const children = await this.prisma.exams.findMany({
+      where: { packageId: eId, status: 'published' },
+      include: {
+        _count: { select: { examQuestions: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const isPurchased = parentExam.userExams.length > 0;
+    const purchaseStatus = isPurchased
+      ? 'completed'
+      : pendingOrder
+        ? 'pending'
+        : 'available';
+
+    let totalQuestionsCount = 0;
+    let totalScoreAccumulator = 0;
+
+    // 6. Map data dengan manual matching
+    const subExamsResult = children.map((child) => {
+      // Cari pengerjaan yang cocok dengan examId child ini
+      const attempt = allUserAttempts.find(
+        (a) => Number(a.examId) === Number(child.id),
+      );
+      // Pastikan konversi score aman
+      const scoreNum = attempt?.score ? Number(attempt.score) : 0;
+
+      totalQuestionsCount += child._count?.examQuestions || 0;
+      totalScoreAccumulator += scoreNum;
+
+      return {
+        id: child.id,
+        name: child.examName,
+        totalSoal: child._count?.examQuestions || 0,
+        passingGrade: child.passingScore,
+        duration: child.durationMinutes,
+        userExamId: attempt?.id || null,
+        status: attempt?.status || 'not_started',
+        score: scoreNum,
+      };
+    });
+
+    return {
+      id: parentExam.id,
+      examName: parentExam.examName,
+      description: parentExam.description,
+      price: Number(parentExam.price) || 0,
+      isPurchased: isPurchased,
+      purchaseStatus: purchaseStatus,
+      pendingOrderId: pendingOrder?.id || null,
+      totalDuration: parentExam.durationMinutes,
+      totalQuestions: totalQuestionsCount,
+      totalPassingScore: totalScoreAccumulator,
+      subject: parentExam.subject?.subjectName,
+      subExams: subExamsResult,
+    };
   }
+
+  //   async getPackageDetail(examId: number) {
+  //     // 1. Ambil data Paket Utama
+  //     const parentExam = await this.prisma.exams.findUnique({
+  //       where: { id: examId },
+  //       include: {
+  //         subject: true,
+  //         _count: { select: { examQuestions: true } },
+  //       },
+  //     });
+
+  //     if (!parentExam) throw new NotFoundException('Paket ujian tidak ditemukan');
+
+  //     // 2. Ambil daftar Sub-Ujian
+  //     const children = await this.prisma.exams.findMany({
+  //       where: {
+  //         packageId: examId,
+  //         status: 'published'
+  //       },
+  //       select: {
+  //         id: true,
+  //         examName: true,
+  //         durationMinutes: true,
+  //         passingScore: true,
+  //         _count: { select: { examQuestions: true } },
+  //       },
+  //       orderBy: { createdAt: 'asc' }
+  //     });
+
+  //     // 3. Gabungkan data
+  //     return {
+  //       id: parentExam.id,
+  //       examName: parentExam.examName,
+  //     description: parentExam.description,
+  //     // PAKSA JADI NUMBER DI SINI
+  //     price: Number(parentExam.price) || 0,
+  //     totalDuration: parentExam.durationMinutes,
+  //     totalQuestions: parentExam._count.examQuestions,
+  //     subject: parentExam.subject?.subjectName,
+  //     subExams: children.map(child => ({
+  //       id: child.id,
+  //       name: child.examName,
+  //       totalSoal: child._count.examQuestions,
+  //       passingGrade: child.passingScore,
+  //       duration: child.durationMinutes
+  //     }))
+  //   };
+  // }
 
   // Get Exam Lengkap (Exams -> ExamQuestions -> Questions -> Answers)
   async findOneExam(id: number, userId: number) {
@@ -267,6 +496,9 @@ export class ExamsService {
 
   // --- MENGHUBUNGKAN SOAL KE UJIAN (ExamQuestions) ---
   async addQuestionToExam(data: AddQuestionToExamDto): Promise<ExamQuestions> {
+    if (!data.examId) {
+      throw new BadRequestException('examId is required');
+    }
     const examIdInt = parseInt(data.examId, 10);
     const questionIdInt = parseInt(data.questionId, 10);
 
@@ -331,8 +563,27 @@ export class ExamsService {
 
     return answer;
   }
+  async getExamWithQuestions(examId: number, userId: number) {
+    // 1. Validasi sesi pengerjaan user
+    // Pakai 'in' status biar kalau statusnya pindah ke 'in_progress' pas dikerjain nggak error 403
+    const userExam = await this.prisma.userExams.findFirst({
+      where: {
+        examId: examId,
+        userId: userId,
+        status: { in: ['not_started', 'in_progress'] },
+      },
+      select: { id: true },
+    });
 
-  async getExamWithQuestions(examId: number) {
+    if (!userExam) {
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        message: 'Ujian telah selesai dikerjakan.',
+      });
+    }
+
+    // 2. Ambil data Exam sesuai patokan struktur yang lo mau
     const exam = await this.prisma.exams.findUnique({
       where: { id: examId },
       select: {
@@ -340,6 +591,10 @@ export class ExamsService {
         examName: true,
         durationMinutes: true,
         passingScore: true,
+        packageId: true,
+        _count: {
+          select: { examQuestions: true },
+        },
         examQuestions: {
           orderBy: { orderInExam: 'asc' },
           select: {
@@ -350,7 +605,7 @@ export class ExamsService {
                 id: true,
                 questionText: true,
                 questionType: true,
-                explanationText: true, // Buat pembahasan
+                explanationText: true,
                 imageUrl: true,
                 answers: {
                   where: { isActive: true },
@@ -358,9 +613,8 @@ export class ExamsService {
                   select: {
                     id: true,
                     answerText: true,
-                    isCorrect: true, // Kunci jawaban
                     pointsIfSelected: true,
-                    metadataJson: true, // Label A, B, C, D
+                    metadataJson: true,
                   },
                 },
               },
@@ -370,46 +624,89 @@ export class ExamsService {
       },
     });
 
-    if (!exam) throw new NotFoundException(`Ujian dengan ID ${examId} tidak ditemukan`);
-    return exam;
+    if (!exam)
+      throw new NotFoundException(`Ujian dengan ID ${examId} tidak ditemukan`);
+
+    // 3. Return dengan format success wrapper dan inject userExamId ke dalam data
+    return {
+      success: true,
+      message: 'Data soal berhasil diambil',
+      userExamId: userExam.id, // ID pengerjaan buat modal submit
+      ...exam, // Semua data dari patokan lo (id, examName, dll)
+      totalQuestions: exam._count.examQuestions,
+      parentExamId: exam.packageId,
+      // data: {
+      // }
+    };
   }
 
   // --- Mekanisme Ujian (User Exam Attempt) ---
   async startExam(examId: number, userId: number) {
-    // Gunakan transaction untuk memastikan pengecekan kuota aman dari race condition
     return this.prisma.$transaction(async (tx) => {
-      const hasAccess = await tx.orders.findFirst({
-        where: {
-          userId,
-          orderStatus: 'completed',
-          orderItems: { some: { itemId: examId, itemType: 'exam' } },
-        },
-      });
-      if (!hasAccess)
-        throw new ForbiddenException('Beli dulu paket ujiannya, Bang.');
-
-      const exam = await tx.exams.findUnique({ where: { id: examId } });
-      // Cek apakah ada ujian yang sedang 'in_progress', kalau ada balikkan yang itu saja
-      const existingAttempt = await tx.userExams.findFirst({
-        where: { examId, userId, status: 'in_progress' },
-      });
-      if (existingAttempt) return existingAttempt;
-
-      const count = await tx.userExams.count({
-        where: { examId, userId, status: 'submitted' },
+      // 1. CEK AKSES
+      const access = await tx.userExams.findFirst({
+        where: { userId, examId },
       });
 
-      if (count >= (exam?.attemptsAllowed || 1))
-        throw new BadRequestException('Jatah ujian sudah habis.');
+      if (!access) {
+        throw new ForbiddenException(
+          'Akses ujian tidak ditemukan. Silakan selesaikan pembayaran.',
+        );
+      }
 
-      return tx.userExams.create({
+      // 2. AMBIL DATA MASTER EXAM (Buat ambil durasi)
+      const exam = await tx.exams.findUnique({
+        where: { id: examId },
+        select: { durationMinutes: true, attemptsAllowed: true },
+      });
+
+      if (!exam)
+        throw new NotFoundException('Data master ujian tidak ditemukan.');
+
+      // 3. LOGIC RESUME (Jika sudah in_progress, hitung ulang deadline-nya)
+      if (access.status === 'in_progress') {
+        const startTime = access.startTime;
+        const endTime = new Date(
+          startTime.getTime() + exam.durationMinutes * 60000,
+        );
+
+        return {
+          ...access,
+          startTime,
+          endTime, // Response tambahan buat FE
+          durationMinutes: exam.durationMinutes,
+        };
+      }
+
+      // 4. CEK KUOTA ATTEMPTS
+      const completedCount = await tx.userExams.count({
+        where: { userId, examId, status: 'submitted' },
+      });
+
+      const maxAttempts = exam.attemptsAllowed || 1;
+      if (completedCount >= maxAttempts) {
+        throw new BadRequestException(`Jatah ujian sudah habis.`);
+      }
+
+      // 5. UPDATE STATUS & MULAI TIMER
+      const now = new Date();
+      const deadline = new Date(now.getTime() + exam.durationMinutes * 60000);
+
+      await tx.userExams.update({
+        where: { id: access.id },
         data: {
-          examId,
-          userId,
-          startTime: new Date(),
+          startTime: now,
           status: 'in_progress',
         },
       });
+
+      // 6. RETURN DENGAN START & END TIME
+      return {
+        // ...startedExam,
+        startTime: now,
+        endTime: deadline, // Ini jam selesainya
+        durationMinutes: exam.durationMinutes,
+      };
     });
   }
 
@@ -419,98 +716,433 @@ export class ExamsService {
     answerId: number,
     userId: number,
   ) {
-    // Ambil data attempt beserta durasi dari master exam
+    // 1. VALIDASI KEPEMILIKAN & STATUS SESI
     const attempt = await this.prisma.userExams.findUnique({
       where: { id: userExamId },
-      include: { exam: { select: { durationMinutes: true } } },
+      include: {
+        exam: { select: { durationMinutes: true } },
+      },
     });
 
-    if (!attempt || attempt.userId !== userId)
-      throw new ForbiddenException(
-        'Akses ditolak. Silakan login kembali atau hubungi admin.',
-      );
-    if (attempt.status !== 'in_progress')
-      throw new BadRequestException('Ujian sudah selesai.');
+    if (!attempt || attempt.userId !== userId) {
+      throw new ForbiddenException('Akses ditolak. Sesi ujian tidak valid.');
+    }
 
-    // --- LOGIC TIMER KONSISTEN ---
+    if (attempt.status !== 'in_progress') {
+      throw new BadRequestException(
+        'Ujian sudah berakhir. Jawaban tidak bisa diubah.',
+      );
+    }
+
+    // 2. LOGIC TIMER
     const now = new Date().getTime();
-    const deadline =
-      attempt.startTime.getTime() + attempt.exam.durationMinutes * 60000;
+    const startTime = attempt.startTime.getTime();
+    const durationMs = attempt.exam.durationMinutes * 60000;
+    const deadline = startTime + durationMs;
 
     if (now > deadline) {
       await this.finishExam(userExamId, userId);
-      throw new BadRequestException('Waktu habis! Jawaban tidak tersimpan.');
+      throw new BadRequestException(
+        'Waktu habis! Sesi ujian telah ditutup secara otomatis.',
+      );
     }
 
+    // 3. LOGIC UPDATE ATAU INSERT
     const existingAnswer = await this.prisma.userExamAnswers.findFirst({
-      where: { userExamId, questionId },
+      where: {
+        userExamId: userExamId,
+        questionId: questionId,
+      },
     });
 
+    let result: SubmitAnswerResult;
+    let message: string;
+
     if (existingAnswer) {
-      return this.prisma.userExamAnswers.update({
+      // Update jawaban yang sudah ada
+      result = await this.prisma.userExamAnswers.update({
         where: { id: existingAnswer.id },
-        data: { selectedAnswerId: answerId, updatedAt: new Date() },
-      });
-    } else {
-      return this.prisma.userExamAnswers.create({
         data: {
-          userExamId,
-          questionId,
+          selectedAnswerId: answerId,
+          updatedAt: new Date(),
+        },
+      });
+      message = 'Jawaban berhasil diperbarui';
+    } else {
+      // Simpan jawaban baru
+      result = await this.prisma.userExamAnswers.create({
+        data: {
+          userExamId: userExamId,
+          questionId: questionId,
           selectedAnswerId: answerId,
           attemptNumber: 1,
         },
       });
+      message = 'Jawaban berhasil disimpan';
     }
-  }
 
+    // 4. RETURN RESPONSE SUKSES
+    return {
+      success: true,
+      message: message,
+      data: {
+        id: result.id,
+        questionId: result.questionId,
+        selectedAnswerId: result.selectedAnswerId,
+        updatedAt: result.updatedAt,
+      },
+    };
+  }
+  // async submitAnswer(
+  //   userExamId: number,
+  //   questionId: number,
+  //   answerId: number,
+  //   userId: number,
+  // ) {
+  //   // 1. VALIDASI KEPEMILIKAN & STATUS SESI
+  //   const attempt = await this.prisma.userExams.findUnique({
+  //     where: { id: userExamId },
+  //     include: { exam: { select: { durationMinutes: true } } },
+  //   });
+
+  //   // Pastikan sesi ada, milik user yang login, dan statusnya masih in_progress
+  //   if (!attempt || attempt.userId !== userId) {
+  //     throw new ForbiddenException('Akses ditolak. Sesi ujian tidak valid.');
+  //   }
+
+  //   if (attempt.status !== 'in_progress') {
+  //     throw new BadRequestException('Ujian sudah berakhir, Bal.');
+  //   }
+
+  //   // 2. LOGIC TIMER (SINGLE SOURCE OF TRUTH)
+  //   const now = new Date().getTime();
+  //   const startTime = attempt.startTime.getTime();
+  //   const durationMs = attempt.exam.durationMinutes * 60000;
+  //   const deadline = startTime + durationMs;
+
+  //   // Jika waktu habis, langsung paksa finish dan blokir simpan jawaban
+  //   if (now > deadline) {
+  //     await this.finishExam(userExamId, userId);
+  //     throw new BadRequestException('Waktu habis! Sesi ujian telah ditutup secara otomatis.');
+  //   }
+
+  //   // 3. SIMPAN ATAU UPDATE JAWABAN
+  //   // Kita pakai findFirst karena user mungkin sudah pernah jawab soal ini sebelumnya
+  //   const existingAnswer = await this.prisma.userExamAnswers.findFirst({
+  //     where: { userExamId, questionId },
+  //   });
+
+  //   if (existingAnswer) {
+  //     return this.prisma.userExamAnswers.update({
+  //       where: { id: existingAnswer.id },
+  //       data: {
+  //         selectedAnswerId: answerId,
+  //         updatedAt: new Date()
+  //       },
+  //     });
+  //   } else {
+  //     return this.prisma.userExamAnswers.create({
+  //       data: {
+  //         userExamId,
+  //         questionId,
+  //         selectedAnswerId: answerId,
+  //         attemptNumber: 1, // Sesuai schema
+  //       },
+  //     });
+  //   }
+  // }
   async finishExam(userExamId: number, userId: number) {
+    console.log(
+      `Memproses finishExam untuk userExamId: ${userExamId}, userId: ${userId}`,
+    );
+
     const attempt = await this.prisma.userExams.findUnique({
       where: { id: userExamId },
-      include: { exam: true },
-    });
-
-    if (!attempt || attempt.userId !== userId)
-      throw new NotFoundException('Sesi tidak ditemukan');
-    if (attempt.status === 'submitted') return attempt;
-
-    const userAnswers = await this.prisma.userExamAnswers.findMany({
-      where: { userExamId },
       include: {
-        selectedAnswer: { select: { isCorrect: true } },
-        question: {
-          include: { examQuestions: { where: { examId: attempt.examId } } },
+        exam: {
+          include: {
+            examQuestions: {
+              include: {
+                question: {
+                  include: { answers: true },
+                },
+              },
+            },
+          },
         },
+        userExamAnswers: true,
       },
     });
 
-    const totalScore = userAnswers.reduce((acc, curr) => {
-      const isCorrect = curr.selectedAnswer?.isCorrect || false;
-      const point = Number(
-        curr.question.examQuestions[0]?.pointsForQuestion || 0,
-      );
-      return isCorrect ? acc + point : acc;
-    }, 0);
-    const endTime = new Date();
-    // Hitung selisih dalam menit
-    const timeTakenMinutes = Math.floor(
-      (endTime.getTime() - attempt.startTime.getTime()) / 60000,
-    );
+    if (!attempt || attempt.userId !== userId) {
+      throw new NotFoundException('Data ujian tidak ditemukan.');
+    }
 
-    return this.prisma.userExams.update({
+    // Jika sudah pernah submit, langsung return data yang ada
+    if (attempt.status === 'submitted') {
+      return {
+        success: true,
+        message: 'Ujian ini sudah diselesaikan sebelumnya.',
+        data: attempt,
+      };
+    }
+
+    let totalScore = 0;
+    let correctCount = 0;
+    let wrongCount = 0;
+    let emptyCount = 0;
+
+    const questionsRelation = attempt.exam.examQuestions || [];
+
+    if (questionsRelation.length === 0) {
+      throw new BadRequestException('Ujian ini tidak memiliki soal.');
+    }
+
+    const evaluation = questionsRelation.map((eq) => {
+      const question = eq.question;
+      const userAns = attempt.userExamAnswers.find(
+        (ans) => ans.questionId === question.id,
+      );
+
+      // Hitung jawaban kosong
+      if (!userAns?.selectedAnswerId) {
+        emptyCount++;
+      }
+
+      const isCorrect =
+        question.answers.find(
+          (a) => Number(a.id) === Number(userAns?.selectedAnswerId),
+        )?.isCorrect || false;
+
+      if (isCorrect) {
+        totalScore += Number(eq.pointsForQuestion || 0);
+        correctCount++;
+      } else if (userAns?.selectedAnswerId) {
+        wrongCount++;
+      }
+
+      return {
+        questionId: question.id,
+        selectedAnswerId: userAns?.selectedAnswerId || null,
+        isCorrect,
+      };
+    });
+
+    const passingScore = Number(attempt.exam.passingScore || 0);
+    const isPassed = totalScore >= passingScore;
+    const passingStatus = isPassed ? 'passed' : 'failed';
+
+    // Update ke Database
+    const updatedResult = await this.prisma.userExams.update({
       where: { id: userExamId },
       data: {
+        score: totalScore.toString(),
+        status: 'submitted',
+        isCompleted: true,
         endTime: new Date(),
         submissionTime: new Date(),
-        score: totalScore,
-        isCompleted: true,
-        status: 'submitted',
         metadataJson: {
-          ...((attempt.metadataJson as object) || {}),
-          timeTakenMinutes: timeTakenMinutes,
+          summary: {
+            totalQuestions: questionsRelation.length,
+            correctAnswers: correctCount,
+            wrongAnswers: wrongCount,
+            unanswered: emptyCount,
+            finalScore: totalScore,
+            passingScore: passingScore,
+            result: passingStatus,
+          },
+          details: evaluation,
         } as Prisma.InputJsonValue,
       },
     });
+
+    // RETURN RESPONSE UNTUK FRONTEND
+    return {
+      success: true,
+      message: 'Ujian berhasil diselesaikan! Lihat hasil Anda.',
+      data: {
+        userExamId: updatedResult.id,
+        examName: attempt.exam.examName,
+        finalScore: totalScore,
+        passingScore: passingScore,
+        status: passingStatus, // 'passed' atau 'failed'
+        summary: {
+          totalQuestions: questionsRelation.length,
+          correct: correctCount,
+          wrong: wrongCount,
+          empty: emptyCount,
+        },
+        submittedAt: updatedResult.submissionTime,
+        // Lo bisa include details kalau FE butuh buat nampilin pembahasan langsung
+        // details: evaluation
+      },
+    };
   }
+  // async finishExam(userExamId: number, userId: number) {
+  //   console.log(`Memproses finishExam untuk userExamId: ${userExamId}, userId: ${userId}`);
+  //   const attempt = await this.prisma.userExams.findUnique({
+  //     where: { id: userExamId },
+  //     include: {
+  //       exam: {
+  //         include: {
+  //           examQuestions: {
+  //             include: {
+  //               question: {
+  //                 include: { answers: true }
+  //               },
+  //             },
+  //           },
+  //         },
+  //       },
+  //       userExamAnswers: true,
+  //     },
+  //   });
+
+  //   if (!attempt || attempt.userId !== userId) {
+  //     throw new NotFoundException("Data ujian tidak ditemukan.");
+  //   }
+
+  //   if (attempt.status === 'submitted') return attempt;
+
+  //   let totalScore = 0;
+  //   const questionsRelation = attempt.exam.examQuestions || [];
+
+  //   if (questionsRelation.length === 0) {
+  //     throw new BadRequestException("Ujian ini tidak memiliki soal.");
+  //   }
+
+  //   const evaluation = questionsRelation.map((eq) => {
+  //     const question = eq.question;
+  //     const userAns = attempt.userExamAnswers.find(
+  //       (ans) => ans.questionId === question.id
+  //     );
+
+  //     const isCorrect = question.answers.find(
+  //       (a) => Number(a.id) === Number(userAns?.selectedAnswerId)
+  //     )?.isCorrect || false;
+
+  //     if (isCorrect) {
+  //       totalScore += Number(eq.pointsForQuestion || 0);
+  //     }
+
+  //     return {
+  //       questionId: question.id,
+  //       selectedAnswerId: userAns?.selectedAnswerId || null,
+  //       isCorrect,
+  //     };
+  //   });
+
+  //   // LOGIC TAMBAHAN: Cek Lulus/Tidak Lulus
+  //   const passingScore = Number(attempt.exam.passingScore || 0);
+  //   const passingStatus = totalScore >= passingScore ? 'passed' : 'failed';
+
+  //   return await this.prisma.userExams.update({
+  //     where: { id: userExamId },
+  //     data: {
+  //       score: totalScore.toString(),
+  //       status: "submitted",
+  //       isCompleted: true,
+  //       // passingStatus, // Simpan status kelulusan
+  //       endTime: new Date(),
+  //       submissionTime: new Date(),
+  //       metadataJson: {
+  //         summary: {
+  //           totalQuestions: questionsRelation.length,
+  //           finalScore: totalScore,
+  //           passingScore: passingScore,
+  //           result: passingStatus
+  //         },
+  //         details: evaluation,
+  //       } as any,
+  //     },
+  //   });
+  // }
+
+  // async getRemainingTime(userExamId: number, userId: number) {
+  //   const attempt = await this.prisma.userExams.findUnique({
+  //     where: { id: userExamId },
+  //     include: {
+  //       exam: { select: { durationMinutes: true } },
+  //     },
+  //   });
+
+  //   if (!attempt) throw new NotFoundException('Sesi ujian tidak ditemukan');
+  //   if (attempt.userId !== userId) throw new ForbiddenException('Akses ditolak');
+
+  //   const now = new Date().getTime();
+  //   const startTime = attempt.startTime.getTime();
+  //   const durationMinutes = attempt.exam.durationMinutes;
+  //   const deadline = startTime + durationMinutes * 60000;
+  //   const remaining = Math.max(0, Math.floor((deadline - now) / 1000));
+
+  //   return {
+  //     remainingSeconds: remaining,
+  //     isExpired: remaining <= 0,
+  //   };
+  // }
+
+  // Tambahkan kurung kurawal tutup untuk menutup class ExamsService
+  // }
+  // async finishExam(userExamId: number, userId: number) {
+  //   const attempt = await this.prisma.userExams.findUnique({
+  //     where: { id: userExamId },
+  //     include: { exam: true },
+  //   });
+
+  //   if (!attempt || attempt.userId !== userId)
+  //     throw new NotFoundException('Sesi tidak ditemukan');
+  //   if (attempt.status === 'submitted') return attempt;
+  //   if (!attempt || attempt.status !== 'in_progress') {
+  //     throw new BadRequestException('Ujian tidak aktif atau sudah selesai');
+  //   }
+
+  //   const now = new Date();
+  //   const durationInMs = attempt.exam.durationMinutes * 60000;
+  //   const deadline = new Date(attempt.startTime.getTime() + durationInMs);
+
+  //   if (now > deadline) {
+  //     // Jika lewat waktu, kita paksa submit apa adanya
+  //     console.log("Waktu habis! Auto-submitting...");
+  //   }
+
+  //   const userAnswers = await this.prisma.userExamAnswers.findMany({
+  //     where: { userExamId },
+  //     include: {
+  //       selectedAnswer: { select: { isCorrect: true } },
+  //       question: {
+  //         include: { examQuestions: { where: { examId: attempt.examId } } },
+  //       },
+  //     },
+  //   });
+
+  //   const totalScore = userAnswers.reduce((acc, curr) => {
+  //     const isCorrect = curr.selectedAnswer?.isCorrect || false;
+  //     const point = Number(
+  //       curr.question.examQuestions[0]?.pointsForQuestion || 0,
+  //     );
+  //     return isCorrect ? acc + point : acc;
+  //   }, 0);
+  //   const endTime = new Date();
+  //   // Hitung selisih dalam menit
+  //   const timeTakenMinutes = Math.floor(
+  //     (endTime.getTime() - attempt.startTime.getTime()) / 60000,
+  //   );
+
+  //   return this.prisma.userExams.update({
+  //     where: { id: userExamId },
+  //     data: {
+  //       endTime: new Date(),
+  //       submissionTime: new Date(),
+  //       score: totalScore,
+  //       isCompleted: true,
+  //       status: 'submitted',
+  //       metadataJson: {
+  //         ...((attempt.metadataJson as object) || {}),
+  //         timeTakenMinutes: timeTakenMinutes,
+  //       } as Prisma.InputJsonValue,
+  //     },
+  //   });
+  // }
 
   async getRemainingTime(userExamId: number, userId: number) {
     const attempt = await this.prisma.userExams.findUnique({
@@ -608,22 +1240,32 @@ export class ExamsService {
 
   // checkout exam
   async getExamCheckoutPreview(examId: number) {
+    // 1. Cari data paket yang mau dibeli
     const exam = await this.prisma.exams.findUnique({
       where: { id: examId },
       include: {
         subject: true,
-        _count: { select: { examQuestions: true } }, // Biar tau ada berapa soal
+        // Ambil sub-ujiannya buat informasi tambahan di struk checkout
+        subExams: {
+          where: { status: 'published' },
+          select: { examName: true },
+        },
       },
     });
-    if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
+    if (!exam) throw new NotFoundException('Paket ujian tidak ditemukan');
+
+    // 2. Return data ringkas untuk kebutuhan Checkout
     return {
       examId: exam.id,
-      title: exam.examName,
+      examName: exam.examName,
+      category: exam.subject?.subjectName,
       price: exam.price,
-      duration: exam.durationMinutes,
-      totalQuestions: exam._count.examQuestions,
-      subjectName: exam.subject?.subjectName,
+      // List sub-tes (misal buat ditaruh di bwh nama paket di struk)
+      includedSubExams: exam.subExams.map((c) => c.examName),
+      // Lo bisa tambahin biaya admin atau diskon di sini nanti kalau ada logic-nya
+      adminFee: 0,
+      totalPayment: exam.price,
     };
   }
 
@@ -634,9 +1276,34 @@ export class ExamsService {
     file: Express.Multer.File,
     discountCode?: string,
   ) {
-    // 1. Cari data Exam
+    // 1. Cari data Exam Utama
     const exam = await this.prisma.exams.findUnique({ where: { id: examId } });
-    if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
+    if (!exam) {
+      throw new NotFoundException({
+        statusCode: 404,
+        error: 'Not Found',
+        message: 'Validation failed for one or more fields',
+        errors: { examId: ['Ujian tidak ditemukan'] },
+      });
+    }
+
+    const existingEnrollment = await this.prisma.userExams.findFirst({
+      where: {
+        userId: userId,
+        examId: examId,
+      },
+    });
+
+    if (existingEnrollment) {
+      throw new BadRequestException({
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Validation failed',
+        errors: {
+          examId: ['Lo sudah terdaftar di ujian ini, nggak perlu beli lagi.'],
+        },
+      });
+    }
 
     const totalAmount = exam.price ?? new Prisma.Decimal(0);
     let discountAmount = new Prisma.Decimal(0);
@@ -645,12 +1312,10 @@ export class ExamsService {
     // 2. LOGIC DISKON (Validasi & Perhitungan)
     if (discountCode) {
       const coupon = await this.prisma.coupons.findUnique({
-        where: { couponCode: discountCode },
+        where: { couponCode: discountCode.toUpperCase() },
       });
 
       const now = new Date();
-
-      // Validasi Dasar (Aktif, Tanggal, & Kuota)
       const isValidBasic =
         coupon &&
         coupon.isActive &&
@@ -659,30 +1324,24 @@ export class ExamsService {
         (coupon.maxUses === null || (coupon.usesCount ?? 0) < coupon.maxUses);
 
       if (!isValidBasic) {
-        throw new BadRequestException(
-          'Kupon tidak valid atau sudah kadaluarsa',
-        );
+        throw new BadRequestException({
+          statusCode: 400,
+          error: 'Bad Request',
+          message: 'Validation failed for one or more fields',
+          errors: { couponCode: ['Kupon tidak valid atau sudah kadaluarsa'] },
+        });
       }
 
-      // --- VALIDASI ENTITAS (Khusus Exam) ---
-      // Cek apakah kupon ini memang untuk 'exam'
+      // Validasi spesifik exam
       if (coupon.appliesToEntityType && coupon.appliesToEntityType !== 'exam') {
-        throw new BadRequestException(
-          'Kupon ini hanya berlaku untuk kursus, bukan ujian.',
-        );
+        throw new BadRequestException({
+          statusCode: 400,
+          error: 'Bad Request',
+          message: 'Validation failed for one or more fields',
+          errors: { couponCode: ['Kupon ini hanya berlaku untuk ujian'] },
+        });
       }
 
-      // Cek apakah kupon ini spesifik untuk ID tertentu (jika field appliesToEntityIds diisi)
-      if (coupon.appliesToEntityIds) {
-        const allowedIds = coupon.appliesToEntityIds as number[];
-        if (!allowedIds.includes(examId)) {
-          throw new BadRequestException(
-            'Kupon tidak berlaku untuk paket ujian ini.',
-          );
-        }
-      }
-
-      // Hitung Diskon
       couponId = coupon.id;
       if (coupon.discountType === 'percentage') {
         discountAmount = totalAmount.mul(Number(coupon.discountValue) / 100);
@@ -692,10 +1351,27 @@ export class ExamsService {
     }
 
     const grandTotal = Prisma.Decimal.max(totalAmount.sub(discountAmount), 0);
+    const isFree = grandTotal.toNumber() === 0;
 
-    // 3. EKSEKUSI TRANSAKSI
+    // --- UPLOAD CLOUDINARY DI LUAR TRANSAKSI ---
+    // Inisialisasi dengan type string | null agar tidak error TS2322
+    let receiptUrl: string | null = null;
+
+    if (!isFree) {
+      if (!file)
+        throw new BadRequestException('Bukti pembayaran wajib diunggah');
+
+      // Tambahkan timeout 1 menit untuk mengatasi koneksi lambat
+      const upload = await this.cloudinary.uploadFile(
+        file,
+        'exam_payment_proofs',
+      );
+      receiptUrl = upload.secure_url;
+    }
+
+    // 3. EKSEKUSI TRANSAKSI DATABASE
     return await this.prisma.$transaction(async (tx) => {
-      // A. Buat Order
+      // A. Buat Order[cite: 1]
       const order = await tx.orders.create({
         data: {
           userId: userId,
@@ -703,8 +1379,8 @@ export class ExamsService {
           discountAmount: discountAmount,
           grandTotal: grandTotal,
           couponCode: discountCode || null,
-          orderStatus: 'pending',
-          paymentStatus: 'pending',
+          orderStatus: isFree ? 'completed' : 'pending',
+          paymentStatus: isFree ? 'paid' : 'pending',
           paymentMethod: paymentMethod,
           orderItems: {
             create: [
@@ -714,7 +1390,7 @@ export class ExamsService {
                 itemName: exam.examName,
                 pricePerItem: totalAmount,
                 totalPrice: grandTotal,
-                courseId: 0, // Sesuai schema lo yang minta Int
+                courseId: 0,
                 metadataJson: { examId: examId } as Prisma.JsonObject,
               },
             ],
@@ -722,7 +1398,23 @@ export class ExamsService {
         },
       });
 
-      // B. Update kuota kupon jika dipakai
+      // B. AUTO-ENROLL (Ujian Utama + Paket Sub-Exams)[cite: 1]
+      const subExams = await tx.exams.findMany({
+        where: { packageId: examId },
+      });
+
+      const allExamsToEnroll = [exam, ...subExams];
+
+      await tx.userExams.createMany({
+        data: allExamsToEnroll.map((item) => ({
+          userId: userId,
+          examId: item.id,
+          status: 'not_started',
+        })),
+        skipDuplicates: true,
+      });
+
+      // C. Update kuota kupon[cite: 1]
       if (couponId) {
         await tx.coupons.update({
           where: { id: couponId },
@@ -730,36 +1422,174 @@ export class ExamsService {
         });
       }
 
-      // C. Upload Bukti & Record Payment
-      const upload = await this.cloudinary.uploadFile(
-        file,
-        'exam_payment_proofs',
-      );
-
-      await tx.payments.create({
-        data: {
-          orderId: order.id,
-          userId: userId,
-          amount: grandTotal,
-          paymentMethod: paymentMethod,
-          transactionId: `EXTX-${Date.now()}-${userId}`,
-          paymentStatus: 'pending',
-          receiptUrl: upload.secure_url,
-        },
-      });
+      // D. Record Payment (Hanya jika tidak gratis)[cite: 1]
+      if (!isFree && receiptUrl) {
+        await tx.payments.create({
+          data: {
+            orderId: order.id,
+            userId: userId,
+            amount: grandTotal,
+            paymentMethod: paymentMethod,
+            transactionId: `EXTX-${Date.now()}-${userId}`,
+            paymentStatus: 'pending',
+            receiptUrl: receiptUrl,
+          },
+        });
+      }
 
       return {
-        message: 'Pembayaran ujian berhasil diupload. Tunggu verifikasi admin.',
         success: true,
+        message: isFree
+          ? 'Paket berhasil diaktifkan!'
+          : 'Pembayaran berhasil diupload. Tunggu verifikasi admin.',
         orderId: order.id,
         grandTotal: grandTotal,
       };
     });
   }
+  // async processExamCheckout(
+  //   examId: number,
+  //   userId: number,
+  //   paymentMethod: string,
+  //   file: Express.Multer.File,
+  //   discountCode?: string,
+  // ) {
+  //   // 1. Cari data Exam
+  //   const exam = await this.prisma.exams.findUnique({ where: { id: examId } });
+  //   if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
 
-  async updateExamQuestion(id: number, data: any) {
-    const existing = await this.prisma.examQuestions.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Relasi soal dan ujian tidak ditemukan');
+  //   const totalAmount = exam.price ?? new Prisma.Decimal(0);
+  //   let discountAmount = new Prisma.Decimal(0);
+  //   let couponId: number | null = null;
+
+  //   // 2. LOGIC DISKON (Validasi & Perhitungan)
+  //   if (discountCode) {
+  //     const coupon = await this.prisma.coupons.findUnique({
+  //       where: { couponCode: discountCode },
+  //     });
+
+  //     const now = new Date();
+
+  //     // Validasi Dasar (Aktif, Tanggal, & Kuota)
+  //     const isValidBasic =
+  //       coupon &&
+  //       coupon.isActive &&
+  //       now >= coupon.validFrom &&
+  //       now <= coupon.validUntil &&
+  //       (coupon.maxUses === null || (coupon.usesCount ?? 0) < coupon.maxUses);
+
+  //     if (!isValidBasic) {
+  //       throw new BadRequestException(
+  //         'Kupon tidak valid atau sudah kadaluarsa',
+  //       );
+  //     }
+
+  //     // --- VALIDASI ENTITAS (Khusus Exam) ---
+  //     // Cek apakah kupon ini memang untuk 'exam'
+  //     if (coupon.appliesToEntityType && coupon.appliesToEntityType !== 'exam') {
+  //       throw new BadRequestException(
+  //         'Kupon ini hanya berlaku untuk kursus, bukan ujian.',
+  //       );
+  //     }
+
+  //     // Cek apakah kupon ini spesifik untuk ID tertentu (jika field appliesToEntityIds diisi)
+  //     if (coupon.appliesToEntityIds) {
+  //       const allowedIds = coupon.appliesToEntityIds as number[];
+  //       if (!allowedIds.includes(examId)) {
+  //         throw new BadRequestException(
+  //           'Kupon tidak berlaku untuk paket ujian ini.',
+  //         );
+  //       }
+  //     }
+
+  //     // Hitung Diskon
+  //     couponId = coupon.id;
+  //     if (coupon.discountType === 'percentage') {
+  //       discountAmount = totalAmount.mul(Number(coupon.discountValue) / 100);
+  //     } else {
+  //       discountAmount = new Prisma.Decimal(coupon.discountValue);
+  //     }
+  //   }
+
+  //   const grandTotal = Prisma.Decimal.max(totalAmount.sub(discountAmount), 0);
+
+  //   // 3. EKSEKUSI TRANSAKSI
+  //   return await this.prisma.$transaction(async (tx) => {
+  //     // A. Buat Order
+  //     const order = await tx.orders.create({
+  //       data: {
+  //         userId: userId,
+  //         totalAmount: totalAmount,
+  //         discountAmount: discountAmount,
+  //         grandTotal: grandTotal,
+  //         couponCode: discountCode || null,
+  //         orderStatus: 'pending',
+  //         paymentStatus: 'pending',
+  //         paymentMethod: paymentMethod,
+  //         orderItems: {
+  //           create: [
+  //             {
+  //               itemType: 'exam',
+  //               itemId: examId,
+  //               itemName: exam.examName,
+  //               pricePerItem: totalAmount,
+  //               totalPrice: grandTotal,
+  //               courseId: 0, // Sesuai schema lo yang minta Int
+  //               metadataJson: { examId: examId } as Prisma.JsonObject,
+  //             },
+  //           ],
+  //         },
+  //       },
+  //     });
+
+  //     // B. Update kuota kupon jika dipakai
+  //     if (couponId) {
+  //       await tx.coupons.update({
+  //         where: { id: couponId },
+  //         data: { usesCount: { increment: 1 } },
+  //       });
+  //     }
+
+  //     // C. Upload Bukti & Record Payment
+  //     const upload = await this.cloudinary.uploadFile(
+  //       file,
+  //       'exam_payment_proofs',
+  //     );
+
+  //     await tx.payments.create({
+  //       data: {
+  //         orderId: order.id,
+  //         userId: userId,
+  //         amount: grandTotal,
+  //         paymentMethod: paymentMethod,
+  //         transactionId: `EXTX-${Date.now()}-${userId}`,
+  //         paymentStatus: 'pending',
+  //         receiptUrl: upload.secure_url,
+  //       },
+  //     });
+
+  //     return {
+  //       message: 'Pembayaran ujian berhasil diupload. Tunggu verifikasi admin.',
+  //       success: true,
+  //       orderId: order.id,
+  //       grandTotal: grandTotal,
+  //     };
+  //   });
+  // }
+
+  async updateExamQuestion(
+    id: number,
+    data: {
+      orderInExam?: string | number;
+      pointsForQuestion?: string | number;
+      sectionName?: string;
+    },
+  ) {
+    const existing = await this.prisma.examQuestions.findUnique({
+      where: { id },
+    });
+    if (!existing)
+      throw new NotFoundException('Relasi soal dan ujian tidak ditemukan');
 
     // Tambahkan pengecekan data
     if (!data) throw new BadRequestException('Payload data tidak boleh kosong');
@@ -768,8 +1598,10 @@ export class ExamsService {
       where: { id },
       data: {
         // Menggunakan optional chaining atau pengecekan null
-        orderInExam: data?.orderInExam ? parseInt(data.orderInExam, 10) : undefined,
-        pointsForQuestion: data?.pointsForQuestion ? new Prisma.Decimal(data.pointsForQuestion) : undefined,
+        orderInExam: data?.orderInExam ? Number(data.orderInExam) : undefined,
+        pointsForQuestion: data?.pointsForQuestion
+          ? new Prisma.Decimal(data.pointsForQuestion)
+          : undefined,
         sectionName: data?.sectionName ?? undefined,
       },
     });
@@ -780,13 +1612,14 @@ export class ExamsService {
     // Cukup hapus record di tabel jembatan (ExamQuestions)
     // Soal asli di tabel Questions tetap aman (tidak terhapus)
     const record = await this.prisma.examQuestions.findFirst({
-      where: { examId, questionId }
+      where: { examId, questionId },
     });
 
-    if (!record) throw new NotFoundException('Soal tidak ditemukan di ujian ini');
+    if (!record)
+      throw new NotFoundException('Soal tidak ditemukan di ujian ini');
 
     return this.prisma.examQuestions.delete({
-      where: { id: record.id }
+      where: { id: record.id },
     });
   }
 
@@ -800,48 +1633,380 @@ export class ExamsService {
       data: { status },
     });
   }
-  async bulkCreateQuestions(examId: number, userId: number, questions: any[]) {
-    return this.prisma.$transaction(async (tx) => {
-      // Definisikan tipe array-nya biar gak jadi 'never'
-      const results: Questions[] = []; 
 
-      for (const qData of questions) {
-        // Create Soal
+  // Tambahkan ini di ExamsService (src/exams/exams.service.ts)
+  async getExamReview(userExamId: number, userId: number) {
+    const attempt = await this.prisma.userExams.findUnique({
+      where: { id: userExamId },
+      include: {
+        exam: {
+          include: {
+            examQuestions: {
+              include: {
+                question: {
+                  include: { answers: true },
+                },
+              },
+            },
+          },
+        },
+        userExamAnswers: true,
+      },
+    });
+
+    if (!attempt || attempt.userId !== userId) throw new NotFoundException();
+
+    // Return data beserta ExplanationText untuk pembahasan
+    return attempt;
+  }
+
+  async bulkCreateQuestions(dto: BulkCreateQuestionsDto, userId: number) {
+    if (!dto.questions || dto.questions.length === 0) {
+      throw new BadRequestException(
+        'Questions array is required and cannot be empty',
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const results: Questions[] = [];
+
+      for (const q of dto.questions) {
+        // Validasi manual lo tetap gue jaga di sini
+        if (!q.questionText || q.questionText.trim() === '') {
+          throw new BadRequestException(
+            'questionText is required and cannot be empty',
+          );
+        }
+        if (!q.answers || q.answers.length === 0) {
+          throw new BadRequestException(
+            'Answers are required for each question',
+          );
+        }
+        if (dto.examId === undefined)
+          throw new BadRequestException('examId wajib diisi');
+        if (q.orderInExam === undefined)
+          throw new BadRequestException('orderInExam wajib diisi');
+        if (dto.subjectId === undefined)
+          throw new BadRequestException('subjectId wajib diisi');
+        if (q.answers.length < 2)
+          throw new BadRequestException('Minimal 2 jawaban');
+
+        // 1. Buat Soal
         const question = await tx.questions.create({
           data: {
-            questionText: qData.questionText,
-            questionType: qData.questionType || 'multiple_choice',
-            // Pastikan subjectId diconvert ke number
-            subject: {
-              connect: { id: parseInt(qData.subjectId, 10) }
-            },
-            createdByUser: {
-              connect: { id: userId }
-            },
-            points: qData.points ? parseInt(qData.points, 10) : 5,
-            difficultyLevel: qData.difficultyLevel || 'medium',
+            questionText: q.questionText,
+            explanationText: q.explanationText || null,
+            subjectId: dto.subjectId,
+            questionType: 'multiple_choice',
+            points: q.points || 5,
+            difficultyLevel: q.difficultyLevel || 'medium',
+            createdByUserId: userId,
             isActive: true,
-            metadataJson: {
-              source: 'bulk_upload',
-              createdAt: new Date().toISOString()
-            } as Prisma.InputJsonValue
-          }
+            answers: {
+              create: q.answers.map((a, i) => {
+                // Validasi jawaban
+                if (!a.label || !a.answerText || a.isCorrect === undefined) {
+                  throw new BadRequestException(
+                    `Answer ke-${i + 1} tidak lengkap`,
+                  );
+                }
+
+                return {
+                  answerText: a.answerText,
+                  isCorrect: a.isCorrect,
+                  // KARENA GAK ADA KOLOM LABEL DI DB, KITA TARUH DI SINI:
+                  metadataJson: { label: a.label },
+                };
+              }),
+            },
+          },
         });
 
-        // Hubungkan ke Exam
+        // 2. Hubungkan ke ExamQuestions
         await tx.examQuestions.create({
           data: {
-            exam: { connect: { id: examId } },
-            question: { connect: { id: question.id } },
-            orderInExam: qData.orderInExam ? parseInt(qData.orderInExam, 10) : 1,
-            pointsForQuestion: new Prisma.Decimal(qData.points || '5.0'),
-          }
+            examId: dto.examId,
+            questionId: question.id,
+            orderInExam: q.orderInExam,
+            pointsForQuestion: new Prisma.Decimal(q.points || 5),
+          },
         });
 
         results.push(question);
       }
-      return results;
+
+      return {
+        message: `${results.length} soal berhasil di-import dengan Subject ID: ${dto.subjectId}`,
+        count: results.length,
+      };
     });
   }
 
+  async submitExam(dto: SubmitExamDto, userId: number) {
+    const { userExamId, answers } = dto;
+    const attempt = await this.prisma.userExams.findUnique({
+      where: { id: userExamId },
+      include: { exam: true },
+    });
+
+    if (!attempt || attempt.userId !== userId)
+      throw new NotFoundException('Data ujian tidak ditemukan');
+    if (attempt.status === 'submitted')
+      throw new BadRequestException('Ujian sudah dikumpulkan');
+
+    return this.prisma.$transaction(async (tx) => {
+      let totalScore = 0;
+      const subjectScores: Record<string, number> = {}; // Objek penampung skor per subjek
+
+      for (const ans of answers) {
+        const question = await tx.questions.findUnique({
+          where: { id: ans.questionId },
+          include: { subject: true }, // Ambil nama subjeknya (TWK/TIU/TKP)
+        });
+
+        const correctOption = await tx.answers.findFirst({
+          where: { questionId: ans.questionId, isCorrect: true },
+        });
+
+        const isCorrect = correctOption?.id === ans.selectedAnswerId;
+        const examQuestion = await tx.examQuestions.findFirst({
+          where: { examId: attempt.examId, questionId: ans.questionId },
+        });
+
+        const points = Number(examQuestion?.pointsForQuestion || 0);
+        const subjectName = question?.subject?.subjectName || 'Umum';
+
+        if (isCorrect) {
+          totalScore += points;
+          subjectScores[subjectName] =
+            (subjectScores[subjectName] || 0) + points;
+        } else {
+          subjectScores[subjectName] = subjectScores[subjectName] || 0;
+        }
+
+        await tx.userExamAnswers.create({
+          data: {
+            userExamId,
+            questionId: ans.questionId,
+            selectedAnswerId: ans.selectedAnswerId,
+            isCorrect,
+            metadataJson: {},
+          },
+        });
+      }
+
+      // Simpan analisis subjek ke dalam metadataJson
+      return tx.userExams.update({
+        where: { id: userExamId },
+        data: {
+          status: 'submitted',
+          endTime: new Date(),
+          score: totalScore,
+          metadataJson: {
+            analysisPerSubject: subjectScores, // Contoh: { "TIU": 80, "TWK": 95 }
+          },
+        },
+      });
+    });
+  }
+
+  async monitorActiveAttempts() {
+    const activeAttempts = await this.prisma.userExams.findMany({
+      where: { status: 'in_progress' }, //
+      include: {
+        user: { select: { firstName: true, email: true } },
+        exam: { select: { examName: true, durationMinutes: true } },
+      },
+      orderBy: { startTime: 'desc' },
+    });
+
+    return activeAttempts.map((attempt) => {
+      const now = new Date().getTime();
+      const deadline =
+        attempt.startTime.getTime() + attempt.exam.durationMinutes * 60000;
+      const remainingSeconds = Math.max(0, Math.floor((deadline - now) / 1000));
+
+      return {
+        ...attempt,
+        remainingTime: `${Math.floor(remainingSeconds / 60)}m ${remainingSeconds % 60}s`,
+        isExpired: remainingSeconds <= 0,
+      };
+    });
+  }
+
+  async createVoucher(data: VoucherInput) {
+    return this.prisma.coupons.create({
+      data: {
+        couponCode: data.couponCode,
+        discountType: data.discountType, // 'percentage' atau 'fixed'
+        discountValue: new Prisma.Decimal(data.discountValue),
+        validFrom: new Date(data.validFrom),
+        validUntil: new Date(data.validUntil),
+        maxUses: data.maxUses,
+        isActive: true,
+        appliesToEntityType: 'exam', // Default buat launching lo[cite: 5]
+        appliesToEntityIds: data.examIds || [], // Array ID exam yang boleh pake voucher ini[cite: 5]
+      },
+    });
+  }
+
+  async autoSubmitExpiredExams() {
+    const now = new Date();
+
+    // Cari semua attempt yang statusnya in_progress tapi sudah lewat deadline
+    // deadline = startTime + durationMinutes
+    const expiredExams = await this.prisma.userExams.findMany({
+      where: {
+        status: 'in_progress',
+      },
+      include: { exam: true },
+    });
+
+    const toSubmit = expiredExams.filter((attempt) => {
+      const deadline = new Date(
+        attempt.startTime.getTime() + attempt.exam.durationMinutes * 60000,
+      );
+      return now > deadline;
+    });
+
+    // Proses bulk update status ke 'submitted'
+    if (toSubmit.length > 0) {
+      const ids = toSubmit.map((a) => a.id);
+      await this.prisma.userExams.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          status: 'submitted',
+          endTime: now,
+          // Skor tetap dihitung berdasarkan jawaban yang sempat tersimpan[cite: 5]
+        },
+      });
+    }
+
+    return { processed: toSubmit.length };
+  }
+
+  async getScoreByExam(examId: number, userId: number) {
+    // 1. Cari data pengerjaan yang sudah submitted
+    const result = await this.prisma.userExams.findFirst({
+      where: {
+        examId: examId,
+        userId: userId,
+        status: 'submitted', // Pastikan hanya ambil yang sudah selesai
+      },
+      include: {
+        exam: {
+          select: {
+            examName: true,
+            passingScore: true,
+          },
+        },
+      },
+    });
+
+    if (!result) {
+      throw new NotFoundException(
+        'Data hasil ujian tidak ditemukan. Mungkin Anda belum menyelesaikan ujian ini.',
+      );
+    }
+
+    // 2. Mapping output biar FE gampang nampilinnya
+    // Kita ambil summary yang lo simpan di metadataJson pas finishExam tadi
+    const metadata = (result.metadataJson ?? {}) as ExamScoreMetadata;
+    const summary = metadata.summary ?? {};
+
+    return {
+      success: true,
+      message: 'Data skor berhasil diambil',
+      data: {
+        userExamId: result.id,
+        examName: result.exam.examName,
+        finalScore: Number(result.score),
+        passingScore: Number(result.exam.passingScore),
+        status:
+          summary.result ||
+          (Number(result.score) >= Number(result.exam.passingScore)
+            ? 'passed'
+            : 'failed'),
+        statistics: {
+          totalQuestions: summary.totalQuestions || 0,
+          correctAnswers: summary.correctAnswers || 0,
+          wrongAnswers: summary.wrongAnswers || 0,
+          unanswered: summary.unanswered || 0,
+        },
+        submittedAt: result.submissionTime,
+        // Jika lo mau nampilin pembahasan (details), ambil dari metadataJson.details
+        details: metadata.details ?? [],
+      },
+    };
+  }
+
+  // src/exams/exams.service.ts
+
+  async getScoreByPackage(packageId: number, userId: number) {
+    // 1. Ambil semua sub-ujian yang termasuk dalam paket ini
+    const subExams = await this.prisma.exams.findMany({
+      where: { packageId: packageId },
+      select: { id: true, examName: true, passingScore: true },
+    });
+
+    if (subExams.length === 0) {
+      throw new NotFoundException(
+        'Paket ujian tidak ditemukan atau tidak memiliki sub-ujian.',
+      );
+    }
+
+    const subExamIds = subExams.map((e) => e.id);
+
+    // 2. Ambil semua hasil pengerjaan user untuk sub-ujian tersebut
+    const results = await this.prisma.userExams.findMany({
+      where: {
+        userId: userId,
+        examId: { in: subExamIds },
+        status: 'submitted',
+      },
+      include: {
+        exam: { select: { examName: true, passingScore: true } },
+      },
+    });
+
+    // 3. Hitung Akumulasi (Total Skor, Total Benar, dll)
+    let totalFinalScore = 0;
+    let allPassed = true;
+
+    const breakdown = results.map((res) => {
+      const metadata = (res.metadataJson ?? {}) as ExamScoreMetadata;
+      const summary = metadata.summary ?? {};
+      const score = Number(res.score || 0);
+      const passing = Number(res.exam.passingScore || 0);
+
+      totalFinalScore += score;
+      const isSubPassed = score >= passing;
+      if (!isSubPassed) allPassed = false; // Jika satu aja gagal, paket dianggap gagal (opsional tergantung aturan lo)
+
+      return {
+        examName: res.exam.examName,
+        score: score,
+        passingScore: passing,
+        status: isSubPassed ? 'passed' : 'failed',
+        stats: {
+          correct: summary.correctAnswers || 0,
+          wrong: summary.wrongAnswers || 0,
+          empty: summary.unanswered || 0,
+        },
+      };
+    });
+
+    return {
+      success: true,
+      message: 'Data skor paket berhasil diambil',
+      data: {
+        packageId: packageId,
+        totalScore: totalFinalScore,
+        isPackagePassed: allPassed,
+        completedExams: results.length,
+        totalExamsInPackage: subExams.length,
+        details: breakdown,
+      },
+    };
+  }
 }

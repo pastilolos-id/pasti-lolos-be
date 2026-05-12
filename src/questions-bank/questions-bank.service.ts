@@ -11,9 +11,8 @@ export class BankSoalService {
   ) {}
 
   async uploadBankSoal(file: Express.Multer.File, body: any, userId: number) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const upload = await this.cloudinary.uploadFile(file, 'bank_soal_pdfs');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+
     const thumbnailUrl = upload.secure_url.replace(/\.[^/.]+$/, '.jpg');
 
     // Simpan ke variable dulu, jangan langsung di-return
@@ -21,15 +20,15 @@ export class BankSoalService {
       data: {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
         assetName: body.title,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+
         filePath: upload.secure_url,
         fileType: 'pdf',
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
+
         fileSizeBytes: BigInt(upload.bytes),
         uploadedByUserId: userId,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+
         cdnUrl: upload.secure_url,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
         thumbnailPath: thumbnailUrl,
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
         description: body.description,

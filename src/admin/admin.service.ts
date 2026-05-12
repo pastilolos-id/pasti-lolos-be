@@ -6,10 +6,16 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentStatus } from './dto/verify-payment.dto';
+import { PaymentsService } from '../payments/payments.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly paymentsService: PaymentsService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async getPendingPayments() {
     return this.prisma.payments.findMany({
@@ -27,46 +33,75 @@ export class AdminService {
   }
 
   // Action: Terima atau Tolak Pembayaran
-  async verifyPayment(paymentId: number, status: PaymentStatus, reason?: string) {
-    // 1. Validasi Keberadaan Data (Point 1)
+  async verifyPayment(
+    paymentId: number,
+    status: PaymentStatus,
+    rejectionReason: string | undefined,
+  ) {
     const payment = await this.prisma.payments.findUnique({
       where: { id: paymentId },
     });
 
     if (!payment) {
-      throw new NotFoundException(`Pembayaran dengan ID ${paymentId} tidak ditemukan`);
+      throw new NotFoundException(
+        `Pembayaran dengan ID ${paymentId} tidak ditemukan`,
+      );
     }
 
-    // 2. Cegah Verifikasi Ulang (Point 1)
     if (payment.paymentStatus !== 'pending') {
-      throw new BadRequestException(`Pembayaran ini sudah diproses sebelumnya dengan status: ${payment.paymentStatus}`);
+      throw new BadRequestException(
+        `Pembayaran ini sudah diproses sebelumnya dengan status: ${payment.paymentStatus}`,
+      );
     }
 
-    return await this.prisma.$transaction(async (tx) => {
-      // 3. Update Payment (Point 4 - Simpan alasan jika gagal)
-      const updatedPayment = await tx.payments.update({
+    if (status === PaymentStatus.COMPLETED) {
+      const result = await this.paymentsService.approveManualPayment(
+        payment.orderId,
+      );
+      return {
+        success: true,
+        message: result.message,
+      };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const paymentUpdateData: { paymentStatus: string; notes?: string } = {
+        paymentStatus: status,
+      };
+
+      if (status === PaymentStatus.FAILED) {
+        paymentUpdateData.notes =
+          rejectionReason ?? 'Pembayaran ditolak tanpa alasan spesifik';
+      }
+
+      await tx.payments.update({
         where: { id: paymentId },
-        data: { 
-          paymentStatus: status,
-          // Simpan alasan di metadataJson atau kolom khusus jika lo punya
-          metadataJson: reason ? { rejectionReason: reason } : (payment.metadataJson as object),
-        },
+        data: paymentUpdateData,
       });
 
-      // 4. Update Order (Point 2 & 5)
       await tx.orders.update({
         where: { id: payment.orderId },
-        data: { 
+        data: {
           orderStatus: status,
-          // Opsional: catat siapa admin yang memverifikasi jika ada req.user.id
+          paymentStatus: status,
         },
       });
-
-      return { 
-        success: true,
-        message: `Pembayaran ${paymentId} telah di-update menjadi ${status}`,
-        data: updatedPayment 
-      };
     });
+
+    const failMsg =
+      rejectionReason?.trim() ||
+      'Pembayaranmu tidak dapat diverifikasi. Silakan hubungi admin atau unggah bukti baru.';
+
+    await this.notificationsService.create({
+      userId: payment.userId,
+      type: 'error',
+      title: 'Pembayaran ditolak',
+      message: failMsg,
+    });
+
+    return {
+      success: true,
+      message: `Pembayaran ${paymentId} telah di-update menjadi ${status}`,
+    };
   }
 }

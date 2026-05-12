@@ -2,10 +2,12 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   UseGuards,
   Req,
   Res,
+  HttpCode,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -13,8 +15,9 @@ import { AuthService } from './auth.service';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { RegisterDto } from './dto/register.dto'; // Import DTO
 import { LoginDto } from './dto/login.dto'; // Import DTO
-import express from 'express';
-import type { Response } from 'express';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import type { Request, Response } from 'express';
+import type { JwtRequestUser } from 'src/types/express';
 
 interface GoogleUserPayload {
   googleId: string;
@@ -34,6 +37,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @HttpCode(200)
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async login(
@@ -64,43 +68,82 @@ export class AuthController {
   @Get('google')
   @UseGuards(AuthGuard('google'), ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async googleAuth() {
+  googleAuth() {
     // Biarkan kosong, Passport yang urus redirect-nya
   }
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  async googleAuthRedirect(
-    @Req() req: express.Request,
-    @Res() res: express.Response,
-  ) {
-    const user = req.user;
+  async googleAuthRedirect(@Req() req: Request, @Res() res: Response) {
+    try {
+      const user = req.user;
 
-    // Cek jika user tidak ada, langsung throw error
-    if (!user) {
-      throw new UnauthorizedException('Google authentication failed');
+      // 1. Cek jika user tidak ada dari Passport
+      if (!user) {
+        throw new UnauthorizedException('Gagal mendapatkan data dari Google');
+      }
+
+      // 2. Proses validasi atau pendaftaran di database
+      // Bungkus proses service ke dalam result
+      const result = await this.authService.validateGoogleUser(
+        user as GoogleUserPayload,
+      );
+
+      // 3. Set Cookie jika berhasil
+      res.cookie('token', result.accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      });
+
+      // 4. Redirect ke halaman utama (Home/Dashboard)
+      return res.redirect(`http://localhost:3000/home`);
+    } catch (error) {
+      // KALO GAGAL:
+      console.error('Google Auth Error:', error);
+
+      // Redirect balik ke login sambil bawa pesan error lewat query param
+      // Supaya FE bisa nampilin toast/notifikasi error ke user
+      const errorMessage = encodeURIComponent(
+        'Login Google gagal, silakan coba lagi.',
+      );
+      return res.redirect(`http://localhost:3000/login?error=${errorMessage}`);
     }
-
-    // Sekarang TypeScript tahu 'user' pasti ada dan bukan undefined
-    // Kita cast ke interface yang lu buat sebelumnya
-    const result = await this.authService.validateGoogleUser(
-      user as GoogleUserPayload,
-    );
-
-    res.cookie('token', result.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    return res.redirect(`http://localhost:3000/login`);
   }
+  // @Get('google/callback')
+  // @UseGuards(AuthGuard('google'))
+  // async googleAuthRedirect(
+  //   @Req() req: express.Request,
+  //   @Res() res: express.Response,
+  // ) {
+  //   const user = req.user;
 
-  @Post('logout')
+  //   // Cek jika user tidak ada, langsung throw error
+  //   if (!user) {
+  //     throw new UnauthorizedException('Google authentication failed');
+  //   }
+
+  //   // Sekarang TypeScript tahu 'user' pasti ada dan bukan undefined
+  //   // Kita cast ke interface yang lu buat sebelumnya
+  //   const result = await this.authService.validateGoogleUser(
+  //     user as GoogleUserPayload,
+  //   );
+
+  //   res.cookie('token', result.accessToken, {
+  //     httpOnly: true,
+  //     secure: process.env.NODE_ENV === 'production',
+  //     sameSite: 'lax',
+  //     maxAge: 7 * 24 * 60 * 60 * 1000,
+  //   });
+
+  //   return res.redirect(`http://localhost:3000/home`);
+  // }
+
+  @Get('logout')
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async logout(@Res({ passthrough: true }) res: Response) {
+  logout(@Res({ passthrough: true }) res: Response) {
     // 1. Hapus cookie dengan cara menimpa nilainya dan set expired ke masa lalu
     res.cookie('token', '', {
       httpOnly: true,
@@ -111,7 +154,29 @@ export class AuthController {
 
     // 2. Return response sukses
     return {
-      message: 'Logout berhasil, cookie telah dihapus',
+      message: 'Logout berhasil',
     };
+  }
+
+  @UseGuards(AuthGuard('jwt')) // Dijagain biar cuma yang punya token bisa masuk
+  @Get('myProfile')
+  async getMe(@Req() req: Request) {
+    // req.user.userId dapet dari logic JwtStrategy lo[cite: 1, 3]
+    const user = req.user as JwtRequestUser | undefined;
+    if (!user?.userId) {
+      throw new UnauthorizedException('User tidak valid');
+    }
+
+    return this.authService.getProfile(user.userId);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Patch('profile')
+  async updateProfile(@Req() req: Request, @Body() dto: UpdateProfileDto) {
+    const user = req.user as JwtRequestUser | undefined;
+    if (!user?.userId) {
+      throw new UnauthorizedException('User tidak valid');
+    }
+    return this.authService.updateProfile(user.userId, dto);
   }
 }
