@@ -40,6 +40,7 @@ export class AdminService {
   ) {
     const payment = await this.prisma.payments.findUnique({
       where: { id: paymentId },
+      include: { order: { select: { userId: true } } },
     });
 
     if (!payment) {
@@ -92,11 +93,10 @@ export class AdminService {
       rejectionReason?.trim() ||
       'Pembayaranmu tidak dapat diverifikasi. Silakan hubungi admin atau unggah bukti baru.';
 
-    await this.notificationsService.create({
-      userId: payment.userId,
-      type: 'error',
-      title: 'Pembayaran ditolak',
-      message: failMsg,
+    await this.notificationsService.notifyByEvent({
+      event: 'payment_rejected_student',
+      userId: payment.order.userId,
+      reason: failMsg,
     });
 
     return {
