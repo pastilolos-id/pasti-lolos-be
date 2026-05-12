@@ -6,16 +6,19 @@ import {
   Req,
   NotFoundException,
 } from '@nestjs/common';
+import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Request } from 'express';
 import type { JwtRequestUser } from 'src/types/express';
 
+@ApiTags('Dashboard')
 @Controller('dashboard')
 export class DashboardController {
   constructor(private prisma: PrismaService) {}
 
   @Get('summary')
+  @ApiCookieAuth()
   @UseGuards(AuthGuard('jwt'))
   async getDashboardSummary(@Req() req: Request) {
     // Ambil userId dari payload JWT
