@@ -10,11 +10,12 @@ import {
   HttpCode,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { RegisterDto } from './dto/register.dto'; // Import DTO
-import { LoginDto } from './dto/login.dto'; // Import DTO
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import type { Request, Response } from 'express';
 import type { JwtRequestUser } from 'src/types/express';
@@ -26,6 +27,8 @@ interface GoogleUserPayload {
   lastName: string;
   picture?: string;
 }
+
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -158,7 +161,8 @@ export class AuthController {
     };
   }
 
-  @UseGuards(AuthGuard('jwt')) // Dijagain biar cuma yang punya token bisa masuk
+  @ApiCookieAuth()
+  @UseGuards(AuthGuard('jwt'))
   @Get('myProfile')
   async getMe(@Req() req: Request) {
     // req.user.userId dapet dari logic JwtStrategy lo[cite: 1, 3]
@@ -170,6 +174,7 @@ export class AuthController {
     return this.authService.getProfile(user.userId);
   }
 
+  @ApiCookieAuth()
   @UseGuards(AuthGuard('jwt'))
   @Patch('profile')
   async updateProfile(@Req() req: Request, @Body() dto: UpdateProfileDto) {

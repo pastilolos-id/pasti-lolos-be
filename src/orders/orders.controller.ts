@@ -8,12 +8,15 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { OrdersService } from './orders.service';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import type { Request } from 'express';
 import type { JwtRequestUser } from 'src/types/express';
 
+@ApiTags('Orders')
+@ApiCookieAuth()
 @Controller('orders')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class OrdersController {

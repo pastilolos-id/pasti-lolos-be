@@ -14,6 +14,7 @@ import {
   UploadedFiles,
   Delete,
 } from '@nestjs/common';
+import { ApiConsumes, ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import {
   FileFieldsInterceptor,
   FileInterceptor,
@@ -45,6 +46,9 @@ interface RequestWithUser extends Request {
     roles: string[];
   };
 }
+
+@ApiTags('Courses')
+@ApiCookieAuth()
 @Controller('courses')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class CoursesController {
@@ -52,6 +56,7 @@ export class CoursesController {
 
   @Post('create')
   @Roles('admin', 'kontributor')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'file', maxCount: 1 }, // Untuk Thumbnail
@@ -68,6 +73,7 @@ export class CoursesController {
 
   @Patch(':id')
   @Roles('admin', 'kontributor')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'file', maxCount: 1 }, // Untuk Thumbnail
@@ -122,7 +128,8 @@ export class CoursesController {
 
   @Post('module-create')
   @Roles('admin', 'kontributor')
-  @UseInterceptors(FileInterceptor('file')) // Nama field di Postman harus 'file'
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
   async createModule(
     @UploadedFile() file: Express.Multer.File,
     @Body() createModuleDto: CreateModuleDto,
@@ -133,6 +140,7 @@ export class CoursesController {
 
   @Post('lesson')
   @Roles('admin', 'kontributor')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'video', maxCount: 1 },
@@ -149,6 +157,7 @@ export class CoursesController {
 
   @Post('subjects')
   @Roles('admin', 'kontributor')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async createSubject(
     @UploadedFile() file: Express.Multer.File,
@@ -192,6 +201,7 @@ export class CoursesController {
   }
 
   @Patch('lesson/:id')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async updateLesson(
     @Param('id') id: string,
@@ -204,6 +214,7 @@ export class CoursesController {
 
   @Post('checkout')
   @Roles('murid')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async checkout(
     @UploadedFile() file: Express.Multer.File,

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 import { Prisma } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -152,67 +152,21 @@ export class PaymentsService {
       };
     });
 
-    await this.notifyAdminsPendingExamPayment({
+    await this.notificationsService.notifyAdminsPendingPayment({
       orderId: checkoutResult.orderId,
       buyerUserId: userId,
-      examName: exam.examName,
+      itemName: exam.examName,
+      itemType: 'exam',
       grandTotal: checkoutResult.grandTotal,
     });
 
+    await this.notificationsService.notifyByEvent({
+      event: 'payment_pending_student',
+      userId: userId,
+      itemName: exam.examName,
+    });
+
     return checkoutResult;
-  }
-
-  /** Role admin panel di codebase pakai `userRoleId: 3` (sinkron dengan @Roles('3')). */
-  private static readonly ADMIN_ROLE_ID = 3;
-
-  /**
-   * Notifikasi ke semua user admin: ada pembayaran manual baru yang menunggu verifikasi.
-   */
-  private async notifyAdminsPendingExamPayment(params: {
-    orderId: number;
-    buyerUserId: number;
-    examName: string;
-    grandTotal: Prisma.Decimal;
-  }) {
-    const buyer = await this.prisma.users.findUnique({
-      where: { id: params.buyerUserId },
-      select: {
-        username: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-      },
-    });
-
-    const buyerLabel =
-      [buyer?.firstName, buyer?.lastName].filter(Boolean).join(' ').trim() ||
-      buyer?.username ||
-      buyer?.email ||
-      `User #${params.buyerUserId}`;
-
-    const admins = await this.prisma.users.findMany({
-      where: {
-        userRoleId: PaymentsService.ADMIN_ROLE_ID,
-        status: 'active',
-      },
-      select: { id: true },
-    });
-
-    const totalStr = Number(params.grandTotal).toLocaleString('id-ID');
-    const title = 'Pembayaran baru menunggu verifikasi';
-    const message = `${buyerLabel} mengunggah bukti pembayaran untuk "${params.examName}" (Order #${params.orderId}, Rp ${totalStr}).`;
-
-    await Promise.all(
-      admins.map((a) =>
-        this.notificationsService.create({
-          userId: a.id,
-          title,
-          message,
-          type: 'warning',
-          link: `/admin/payments/pending`,
-        }),
-      ),
-    );
   }
 
   // Fungsi Approve oleh Admin[cite: 5]
@@ -279,23 +233,18 @@ export class PaymentsService {
         });
       }
 
-      // 5. Kirim Notifikasi
-      const notification = await tx.notifications.create({
-        data: {
-          userId: updatedOrder.userId,
-          type: 'success',
-          title: 'Akses Ujian Terbuka!',
-          message: `Pembayaran untuk ${updatedOrder.orderItems[0]?.itemName ?? 'pesanan'} berhasil diverifikasi. Selamat belajar!`,
-        },
-      });
-
       return {
         message: `Order #${orderId} sukses, status 'completed', dan akses dibuka.`,
-        notification,
+        userId: updatedOrder.userId,
+        itemName: updatedOrder.orderItems[0]?.itemName ?? 'pesanan',
       };
     });
 
-    this.notificationsService.deliverRealtime(txResult.notification);
+    await this.notificationsService.notifyByEvent({
+      event: 'payment_approved_student',
+      userId: txResult.userId,
+      itemName: txResult.itemName,
+    });
 
     return {
       message: txResult.message,
@@ -303,7 +252,42 @@ export class PaymentsService {
   }
 
   async approveBulkPayments(orderIds: number[]) {
-    return await this.prisma.$transaction(async (tx) => {
+    const approvedOrders = await this.prisma.$transaction(async (tx) => {
+      const orders = await tx.orders.findMany({
+        where: { id: { in: orderIds } },
+        include: { orderItems: true },
+      });
+
+      const examOrderItems = orders.flatMap((order) =>
+        order.orderItems
+          .filter((item) => item.itemType === 'exam')
+          .map((item) => ({ userId: order.userId, examId: item.itemId })),
+      );
+
+      if (examOrderItems.length > 0) {
+        const parentExamIds = [...new Set(examOrderItems.map((i) => i.examId))];
+        const subExams = await tx.exams.findMany({
+          where: { packageId: { in: parentExamIds } },
+          select: { id: true, packageId: true },
+        });
+
+        const enrollData = examOrderItems.flatMap((item) => {
+          const childIds = subExams
+            .filter((s) => s.packageId === item.examId)
+            .map((s) => s.id);
+          return [item.examId, ...childIds].map((examId) => ({
+            userId: item.userId,
+            examId,
+            status: 'not_started' as const,
+          }));
+        });
+
+        await tx.userExams.createMany({
+          data: enrollData,
+          skipDuplicates: true,
+        });
+      }
+
       // 1. Update status di tabel Orders
       await tx.orders.updateMany({
         where: { id: { in: orderIds } },
@@ -319,11 +303,23 @@ export class PaymentsService {
         data: { paymentStatus: 'completed' },
       });
 
-      return {
-        success: true,
-        message: `${orderIds.length} pembayaran berhasil disetujui sekaligus.`,
-      };
+      return orders;
     });
+
+    await Promise.all(
+      approvedOrders.map((order) =>
+        this.notificationsService.notifyByEvent({
+          event: 'bulk_payment_approved_student',
+          userId: order.userId,
+          itemName: order.orderItems[0]?.itemName ?? 'pesanan',
+        }),
+      ),
+    );
+
+    return {
+      success: true,
+      message: `${orderIds.length} pembayaran berhasil disetujui sekaligus.`,
+    };
   }
 
   async validateVoucher(code: string, examId: number) {

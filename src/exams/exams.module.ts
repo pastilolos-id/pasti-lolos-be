@@ -4,8 +4,10 @@ import { ExamsController } from './exams.controller';
 import { ExamReviewService } from './exam-review.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
+  imports: [NotificationsModule],
   providers: [
     ExamsService,
     ExamReviewService,

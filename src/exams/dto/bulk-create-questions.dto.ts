@@ -6,8 +6,9 @@ import {
   ValidateNested,
   IsBoolean,
   IsNotEmpty,
+  IsUrl,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class CreateAnswerNestedDto {
   @IsString()
@@ -43,6 +44,13 @@ export class QuestionItemDto {
   @IsNotEmpty()
   orderInExam!: number;
 
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === '' || value === null || value === undefined ? undefined : value,
+  )
+  @IsUrl({ require_protocol: true, protocols: ['http', 'https'] })
+  imageUrl?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateAnswerNestedDto)
@@ -57,6 +65,10 @@ export class BulkCreateQuestionsDto {
   @IsNumber()
   @IsNotEmpty()
   subjectId!: number;
+
+  @IsOptional()
+  @IsString()
+  examTitle?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

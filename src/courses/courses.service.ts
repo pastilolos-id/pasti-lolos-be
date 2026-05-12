@@ -16,6 +16,7 @@ import { CreateSubjectDto } from './dto/create-subject.dto';
 import { CreateTopicDto } from './dto/create-topic.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 interface CourseFiles {
   file?: Express.Multer.File[]; // Thumbnail
@@ -32,6 +33,7 @@ export class CoursesService {
   constructor(
     private prisma: PrismaService,
     private cloudinary: CloudinaryService,
+    private notificationsService: NotificationsService,
   ) {}
 
   // --- CRUD COURSES ---
@@ -280,7 +282,7 @@ export class CoursesService {
 
     const grandTotal = Prisma.Decimal.max(totalAmount.sub(discountAmount), 0);
 
-    return await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. Buat Order
       const order = await tx.orders.create({
         data: {
@@ -339,7 +341,24 @@ export class CoursesService {
         discountAmount: discountAmount,
       };
     });
+
+    await this.notificationsService.notifyAdminsPendingPayment({
+      orderId: result.orderId,
+      buyerUserId: userId,
+      itemName: course.courseTitle || 'Kursus',
+      itemType: 'course',
+      grandTotal: result.grandTotal,
+    });
+
+    await this.notificationsService.notifyByEvent({
+      event: 'payment_pending_student',
+      userId: userId,
+      itemName: course.courseTitle || 'Kursus',
+    });
+
+    return result;
   }
+
   // async createOrderAndUploadPayment(
   //   courseId: number,
   //   userId: number,
@@ -875,7 +894,7 @@ export class CoursesService {
   }
 
   async approvePayment(orderId: number) {
-    return await this.prisma.$transaction(async (tx) => {
+    const txResult = await this.prisma.$transaction(async (tx) => {
       // 1. Update status Payment
       await tx.payments.updateMany({
         where: { orderId: orderId },
@@ -884,10 +903,22 @@ export class CoursesService {
 
       // 2. Update status Order jadi completed
       // Ini yang akan membuka gembok konten di findOneCourse
-      return await tx.orders.update({
+      const updatedOrder = await tx.orders.update({
         where: { id: orderId },
         data: { orderStatus: 'completed' },
+        include: { orderItems: true },
       });
+
+      return updatedOrder;
     });
+
+    // Kirim notifikasi ke user
+    await this.notificationsService.notifyByEvent({
+      event: 'payment_approved_student',
+      userId: txResult.userId,
+      itemName: txResult.orderItems[0]?.itemName ?? 'kursus',
+    });
+
+    return txResult;
   }
 }

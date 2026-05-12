@@ -10,6 +10,7 @@ import {
   Body,
   Res,
 } from '@nestjs/common';
+import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { StudentsService } from './students.service';
 import { AuthGuard } from '@nestjs/passport';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -22,6 +23,8 @@ interface RequestWithUser extends Express.Request {
   user?: JwtRequestUser;
 }
 
+@ApiTags('Students')
+@ApiCookieAuth()
 @Controller('students')
 @UseGuards(AuthGuard('jwt'))
 export class StudentsController {
