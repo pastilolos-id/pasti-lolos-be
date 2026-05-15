@@ -12,6 +12,8 @@ import { PaymentsModule } from './payments/payments.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { OrdersModule } from './orders/orders.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { TransactionsModule } from './transactions/transactions.module';
 import { APP_GUARD } from '@nestjs/core';
 
 @Module({
@@ -40,6 +42,8 @@ import { APP_GUARD } from '@nestjs/core';
     PaymentsModule,
     OrdersModule,
     NotificationsModule,
+    DashboardModule,
+    TransactionsModule,
   ],
   controllers: [],
   providers: [

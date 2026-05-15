@@ -42,6 +42,7 @@ export class OrdersService {
       paymentStatus: order.paymentStatus,
       grandTotal: Number(order.grandTotal), // Pastikan diconvert ke Number
       paymentMethod: order.paymentMethod,
+      notes: order.notes,
       items: order.orderItems.map((item) => ({
         ...item,
         // totalPrice: Number(item.totalPrice)

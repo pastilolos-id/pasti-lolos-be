@@ -42,7 +42,9 @@ async function bootstrap() {
     origin: [
       'http://localhost:3000', // Port default Next.js
       'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
       'http://192.168.18.33:3000', // IP lokal (sesuaikan dengan IP lo)
+      'http://localhost:3001',
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true, // Izinkan kirim cookie/header authorization
