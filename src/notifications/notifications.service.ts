@@ -103,7 +103,7 @@ export class NotificationsService {
     buyerUserId: number;
     orderId: number;
     itemName: string;
-    itemType: 'course' | 'exam';
+    itemType: 'course' | 'exam' | 'question_bank';
     grandTotal: Prisma.Decimal;
   }) {
     const buyer = await this.prisma.users.findUnique({
@@ -115,7 +115,12 @@ export class NotificationsService {
       buyer?.username ||
       buyer?.email ||
       `User #${params.buyerUserId}`;
-    const entityLabel = params.itemType === 'course' ? 'kursus' : 'ujian';
+    const entityLabels: Record<string, string> = {
+      course: 'kursus',
+      exam: 'ujian',
+      question_bank: 'bank soal',
+    };
+    const entityLabel = entityLabels[params.itemType] ?? params.itemType;
     const totalStr = Number(params.grandTotal).toLocaleString('id-ID');
 
     const admins = await this.prisma.users.findMany({

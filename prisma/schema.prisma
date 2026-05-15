@@ -188,6 +188,8 @@ model QuestionBanks {
   externalId                   String?             @map("external_id") @db.VarChar(100)
   metadataJson                 Json?               @map("metadata_json")
   internalNotes                String?             @map("internal_notes")
+  pdfUrl                       String?             @map("pdf_url")
+  pdfName                      String?             @map("pdf_name") @db.VarChar(255)
   createdByUserId              Int                 @map("created_by_user_id")
   createdAt                    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                    DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)

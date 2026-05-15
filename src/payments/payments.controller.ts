@@ -13,6 +13,7 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
 } from '@nestjs/common';
+import { ApiConsumes, ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -22,6 +23,8 @@ import { CheckVoucherDto } from './dto/coupon-check.dto';
 import type { Request } from 'express';
 import type { JwtRequestUser } from 'src/types/express';
 
+@ApiTags('Payments')
+@ApiCookieAuth()
 @Controller('payments')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class PaymentsController {
@@ -35,8 +38,8 @@ export class PaymentsController {
       dto.examId,
     );
   }
-  // URL KHUSUS CHECKOUT EXAM
   @Post('checkout/exam')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   async checkoutExam(
     @UploadedFile(
@@ -85,6 +88,7 @@ export class PaymentsController {
   }
 
   @Post('upload-proof')
+  @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {

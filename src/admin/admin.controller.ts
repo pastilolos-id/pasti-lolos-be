@@ -7,10 +7,11 @@ import {
   UseGuards,
   ParseIntPipe,
 } from '@nestjs/common';
-import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
+import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AuthGuard } from '@nestjs/passport';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
+import { RejectTransactionDto } from './dto/reject-transaction.dto';
 import { Roles } from 'src/common/decorators/roles.decorators';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 
@@ -27,13 +28,30 @@ export class AdminController {
     return this.adminService.getPendingPayments();
   }
 
-  @Patch('payments/verify/:id')
+  @Patch('payments/verify/:orderId')
   @Roles('3')
+  @ApiOperation({
+    summary:
+      'Admin: Verifikasi pembayaran berdasarkan Order ID (completed = terima, failed = tolak)',
+  })
   async verify(
-    @Param('id', ParseIntPipe) id: number, // Pake ParseIntPipe biar otomatis jadi number
+    @Param('orderId', ParseIntPipe) orderId: number,
     @Body() dto: VerifyPaymentDto,
   ) {
-    // Kirim status dan reason ke service
-    return this.adminService.verifyPayment(id, dto.status, dto.rejectionReason);
+    return this.adminService.verifyPayment(
+      orderId,
+      dto.status,
+      dto.rejectionReason,
+    );
+  }
+
+  @Patch('transactions/:orderId/reject')
+  @Roles('3')
+  @ApiOperation({ summary: 'Admin: Tolak transaksi berdasarkan Order ID' })
+  async rejectTransaction(
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @Body() dto: RejectTransactionDto,
+  ) {
+    return this.adminService.rejectTransaction(orderId, dto.rejectionReason);
   }
 }
