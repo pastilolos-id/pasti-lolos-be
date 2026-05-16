@@ -38,16 +38,19 @@ async function bootstrap() {
   );
   // --- CONFIGURASI CORS ---
   app.enableCors({
-    // Masukkan URL frontend lo
+    // Masukkan URL frontend lokal dan production (Vercel) lo di sini
     origin: [
-      'http://localhost:3000', // Port default Next.js
+      'http://localhost:3000',
       'http://127.0.0.1:3000',
       'http://127.0.0.1:3001',
-      'http://192.168.18.33:3000', // IP lokal (sesuaikan dengan IP lo)
+      'http://192.168.18.33:3000',
       'http://localhost:3001',
+      // URL Production Vercel lo:
+      'https://pasti-lolos-fe.vercel.app',
+      'https://pasti-lolos-admin-fe.vercel.app',
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true, // Izinkan kirim cookie/header authorization
+    credentials: true, // Wajib true kalau nanti mainan cookie / session / @UseGuards jwt
   });
   // ------------------------
 
