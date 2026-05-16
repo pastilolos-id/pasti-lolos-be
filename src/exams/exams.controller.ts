@@ -113,6 +113,12 @@ export class ExamsController {
     // Ubah di sini
     return this.examsService.findAllPublished(category);
   }
+  @Get('admin')
+  @Roles('1', '2', '3')
+  findAllPublishedADMIN(@Query('category') category?: string) {
+    // Ubah di sini
+    return this.examsService.findAllPublishedAdmin(category);
+  }
 
   @Get('get/:id')
   findOne(

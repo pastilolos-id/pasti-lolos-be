@@ -2137,4 +2137,101 @@ export class ExamsService {
       },
     };
   }
+  // --- GET EXAM PUBLISHING ---
+  async findAllPublishedAdmin(
+    subjectName?: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    if (!subjectName) {
+      throw new BadRequestException('Kategori (BUMN/CPNS) harus dipilih!');
+    }
+
+    const safeLimit = [10, 30, 50].includes(Number(limit)) ? Number(limit) : 10;
+    const skip = (Number(page) - 1) * safeLimit;
+
+    const [rawExams, total] = await Promise.all([
+      this.prisma.exams.findMany({
+        where: {
+          status: 'published',
+          packageId: null,
+          subject: {
+            subjectName: {
+              equals: subjectName,
+              mode: 'insensitive',
+            },
+          },
+        },
+        take: safeLimit,
+        skip: skip,
+        select: {
+          id: true,
+          examName: true,
+          description: true,
+          examType: true,
+          price: true, // Prisma mengambil ini sebagai Decimal/String
+          durationMinutes: true,
+          totalQuestions: true,
+          subject: {
+            select: { subjectName: true },
+          },
+          _count: {
+            select: { examQuestions: true },
+          },
+          subExams: {
+            select: {
+              _count: { select: { examQuestions: true } },
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      this.prisma.exams.count({
+        where: {
+          packageId: null,
+          subject: {
+            subjectName: { equals: subjectName, mode: 'insensitive' },
+          },
+        },
+      }),
+    ]);
+
+    // TRANSFORMASI DI SINI: Ubah price dari Decimal/String ke Number
+    // Jumlah soal: parent + semua sub-exam (paket), fallback ke kolom totalQuestions
+    const data = rawExams.map((exam) => {
+      const questionsOnParent = exam._count.examQuestions;
+      const questionsOnChildren = exam.subExams.reduce(
+        (sum, sub) => sum + sub._count.examQuestions,
+        0,
+      );
+      const fromRelations = questionsOnParent + questionsOnChildren;
+      const jumlahSoal =
+        fromRelations > 0 ? fromRelations : (exam.totalQuestions ?? 0);
+
+      return {
+        id: exam.id,
+        examName: exam.examName,
+        description: exam.description,
+        examType: exam.examType,
+        durationMinutes: exam.durationMinutes,
+        totalQuestions: jumlahSoal,
+        subject: exam.subject,
+        _count: exam._count,
+        price: Number(exam.price),
+        jumlahSoal,
+      };
+    });
+
+    return {
+      data,
+      meta: {
+        total,
+        page: Number(page),
+        lastPage: Math.ceil(total / safeLimit),
+        limit: safeLimit,
+      },
+    };
+  }
 }
