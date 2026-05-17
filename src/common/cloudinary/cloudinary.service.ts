@@ -1,5 +1,6 @@
 // src/common/cloudinary/cloudinary.service.ts
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   v2 as cloudinary,
   UploadApiResponse,
@@ -73,11 +74,21 @@ function formatRemoteImageFetchFailure(
 
 @Injectable()
 export class CloudinaryService {
-  constructor() {
+  constructor(private readonly configService: ConfigService) {
+    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
+    const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
+    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      throw new Error(
+        'Cloudinary belum dikonfigurasi. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, dan CLOUDINARY_API_SECRET di .env',
+      );
+    }
+
     cloudinary.config({
-      cloud_name: 'dba9gwcs2',
-      api_key: '764965293996426',
-      api_secret: 'qgqUg_I2dRDWlWD2K5JeVSCNKl8',
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
     });
   }
 
