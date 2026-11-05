@@ -1,0 +1,46 @@
+services:
+    pasti-lolos-db-prod:
+        image: postgres:16-alpine
+        container_name: pasti-lolos-db-prod
+        restart: unless-stopped
+        env_file:
+            - .env.production
+        networks:
+            pasti-lolos-net-be:
+                ipv4_address: 172.20.0.2
+        volumes:
+            - /opt/pasti-lolos/pasti-lolos-data/postgre_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+            interval: 5s
+            timeout: 5s
+            retries: 10
+            start_period: 10s
+
+    pasti-lolos-be-prod:
+        build:
+            context: .
+            dockerfile: Dockerfile.production
+        image: pasti-lolos-be-prod:latest
+        container_name: pasti-lolos-be-prod
+        restart: unless-stopped
+        env_file:
+            - .env.production
+        environment:
+            NODE_ENV: production
+        ports:
+            - "4000:4000"
+        networks:
+            pasti-lolos-net-be:
+                ipv4_address: 172.20.0.3
+        depends_on:
+            pasti-lolos-db-prod:
+                condition: service_healthy
+
+networks:
+    pasti-lolos-net-be:
+        name: pasti-lolos-net-be
+        driver: bridge
+        ipam:
+            config:
+                - subnet: 172.20.0.0/16
