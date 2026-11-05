@@ -8,6 +8,8 @@ services:
         networks:
             pasti-lolos-net-be:
                 ipv4_address: 172.20.0.2
+        ports:
+            - "${TAILSCALE_BIND_IP}:5432:5432"
         volumes:
             - /opt/pasti-lolos/pasti-lolos-data/postgre_data:/var/lib/postgresql/data
         healthcheck:
