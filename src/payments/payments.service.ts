@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../common/cloudinary/cloudinary.service';
 import { Prisma } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ExamPackagesService } from '../exams/exam-packages.service';
 
 @Injectable()
 export class PaymentsService {
@@ -14,36 +15,35 @@ export class PaymentsService {
     private prisma: PrismaService,
     private cloudinary: CloudinaryService,
     private notificationsService: NotificationsService,
+    private examPackagesService: ExamPackagesService,
   ) {}
 
-  // FUNGSI SPESIFIK UNTUK EXAM
   async processExamManualPayment(
-    examId: number,
+    examPackageId: number,
     userId: number,
     paymentMethod: string,
     file: Express.Multer.File,
     discountCode?: string,
   ) {
-    // 1. Cari data Exam Utama
-    const exam = await this.prisma.exams.findUnique({ where: { id: examId } });
-    if (!exam) throw new NotFoundException('Ujian tidak ditemukan');
+    const pkg = await this.prisma.examPackages.findUnique({
+      where: { id: examPackageId },
+    });
+    if (!pkg) throw new NotFoundException('Ujian tidak ditemukan');
 
-    // 2. CEK APAKAH SUDAH PUNYA AKSES (Enrollment)
-    const existingEnrollment = await this.prisma.userExams.findFirst({
-      where: { userId, examId },
+    const existingEnrollment = await this.prisma.userExamPackages.findFirst({
+      where: { userId, examPackageId },
     });
     if (existingEnrollment) {
       throw new BadRequestException('Lo sudah punya akses ke ujian ini.');
     }
 
-    // 3. CEK APAKAH ADA ORDER YANG MASIH PENDING (Ini yang lo butuhin, Bal)
     const pendingOrder = await this.prisma.orders.findFirst({
       where: {
         userId,
-        orderStatus: 'pending', // Masih nunggu verifikasi admin
+        orderStatus: 'pending',
         orderItems: {
           some: {
-            itemId: examId,
+            itemId: examPackageId,
             itemType: 'exam',
           },
         },
@@ -58,8 +58,7 @@ export class PaymentsService {
       });
     }
 
-    // 3. LOGIC DISKON
-    const totalAmount = exam.price ?? new Prisma.Decimal(0);
+    const totalAmount = pkg.price ?? new Prisma.Decimal(0);
     let discountAmount = new Prisma.Decimal(0);
     let couponId: number | null = null;
 
@@ -87,16 +86,13 @@ export class PaymentsService {
 
     const grandTotal = Prisma.Decimal.max(totalAmount.sub(discountAmount), 0);
 
-    // --- 4. UPLOAD CLOUDINARY DI LUAR TRANSAKSI (Anti P2028) ---
     if (!file) throw new BadRequestException('Bukti pembayaran wajib diunggah');
     const upload = await this.cloudinary.uploadFile(
       file,
       'exam_payment_proofs',
     );
 
-    // 5. TRANSAKSI DATABASE (Cepat karena upload sudah selesai)
     const checkoutResult = await this.prisma.$transaction(async (tx) => {
-      // A. Buat Order
       const order = await tx.orders.create({
         data: {
           userId,
@@ -111,19 +107,18 @@ export class PaymentsService {
             create: [
               {
                 itemType: 'exam',
-                itemId: examId,
-                itemName: exam.examName,
+                itemId: examPackageId,
+                itemName: pkg.examName,
                 pricePerItem: totalAmount,
                 totalPrice: grandTotal,
                 courseId: 0,
-                metadataJson: { examId } as Prisma.JsonObject,
+                metadataJson: { examId: examPackageId } as Prisma.JsonObject,
               },
             ],
           },
         },
       });
 
-      // B. Update kuota kupon
       if (couponId) {
         await tx.coupons.update({
           where: { id: couponId },
@@ -131,7 +126,6 @@ export class PaymentsService {
         });
       }
 
-      // C. Record Payment
       await tx.payments.create({
         data: {
           orderId: order.id,
@@ -140,7 +134,7 @@ export class PaymentsService {
           paymentMethod,
           transactionId: `EXTX-${Date.now()}-${userId}`,
           paymentStatus: 'pending',
-          receiptUrl: upload.secure_url, // URL dari upload di atas
+          receiptUrl: upload.secure_url,
         },
       });
 
@@ -155,31 +149,24 @@ export class PaymentsService {
     await this.notificationsService.notifyAdminsPendingPayment({
       orderId: checkoutResult.orderId,
       buyerUserId: userId,
-      itemName: exam.examName,
+      itemName: pkg.examName,
       itemType: 'exam',
       grandTotal: checkoutResult.grandTotal,
     });
 
     await this.notificationsService.notifyByEvent({
       event: 'payment_pending_student',
-      userId: userId,
-      itemName: exam.examName,
+      userId,
+      itemName: pkg.examName,
     });
 
     return checkoutResult;
   }
 
-  // Fungsi Approve oleh Admin[cite: 5]
-  // src/payments/payments.service.ts
-
-  // src/payments/payments.service.ts
-
   async approveManualPayment(orderId: number) {
-    // Ganti jadi number
     const txResult = await this.prisma.$transaction(async (tx) => {
-      // 1. Ambil detail order
       const order = await tx.orders.findUnique({
-        where: { id: orderId }, // Sekarang sudah match (number)
+        where: { id: orderId },
         include: { orderItems: true },
       });
 
@@ -189,48 +176,30 @@ export class PaymentsService {
         throw new BadRequestException('Order ini sudah diproses sebelumnya.');
       }
 
-      // 2. Update status Order & Payment
-      // PENTING: Tambahkan include orderItems di sini juga agar variabel 'updatedOrder' punya datanya
       const updatedOrder = await tx.orders.update({
         where: { id: orderId },
         data: {
           orderStatus: 'completed',
           paymentStatus: 'paid',
         },
-        include: { orderItems: true }, // Tambahkan ini biar error Property 'orderItems' does not exist hilang
+        include: { orderItems: true },
       });
 
-      // 3. Update status di tabel Payments
       await tx.payments.updateMany({
         where: { orderId: order.id },
         data: { paymentStatus: 'completed' },
       });
 
-      // 4. --- AUTO ENROLL LOGIC ---
-      // Pakai updatedOrder yang sudah include orderItems
-      const parentExamIds = updatedOrder.orderItems
+      const packageIds = updatedOrder.orderItems
         .filter((item) => item.itemType === 'exam')
         .map((item) => item.itemId);
 
-      if (parentExamIds.length > 0) {
-        const subExams = await tx.exams.findMany({
-          where: { packageId: { in: parentExamIds } },
-          select: { id: true },
-        });
-
-        const childExamIds = subExams.map((se) => se.id);
-        const allExamIdsToEnroll = [
-          ...new Set([...parentExamIds, ...childExamIds]),
-        ];
-
-        await tx.userExams.createMany({
-          data: allExamIdsToEnroll.map((id) => ({
-            userId: updatedOrder.userId,
-            examId: id,
-            status: 'not_started',
-          })),
-          skipDuplicates: true,
-        });
+      for (const examPackageId of [...new Set(packageIds)]) {
+        await this.examPackagesService.enrollUserInPackage(
+          tx,
+          updatedOrder.userId,
+          examPackageId,
+        );
       }
 
       return {
@@ -261,34 +230,20 @@ export class PaymentsService {
       const examOrderItems = orders.flatMap((order) =>
         order.orderItems
           .filter((item) => item.itemType === 'exam')
-          .map((item) => ({ userId: order.userId, examId: item.itemId })),
+          .map((item) => ({
+            userId: order.userId,
+            examPackageId: item.itemId,
+          })),
       );
 
-      if (examOrderItems.length > 0) {
-        const parentExamIds = [...new Set(examOrderItems.map((i) => i.examId))];
-        const subExams = await tx.exams.findMany({
-          where: { packageId: { in: parentExamIds } },
-          select: { id: true, packageId: true },
-        });
-
-        const enrollData = examOrderItems.flatMap((item) => {
-          const childIds = subExams
-            .filter((s) => s.packageId === item.examId)
-            .map((s) => s.id);
-          return [item.examId, ...childIds].map((examId) => ({
-            userId: item.userId,
-            examId,
-            status: 'not_started' as const,
-          }));
-        });
-
-        await tx.userExams.createMany({
-          data: enrollData,
-          skipDuplicates: true,
-        });
+      for (const item of examOrderItems) {
+        await this.examPackagesService.enrollUserInPackage(
+          tx,
+          item.userId,
+          item.examPackageId,
+        );
       }
 
-      // 1. Update status di tabel Orders
       await tx.orders.updateMany({
         where: { id: { in: orderIds } },
         data: {
@@ -297,7 +252,6 @@ export class PaymentsService {
         },
       });
 
-      // 2. Update status di tabel Payments
       await tx.payments.updateMany({
         where: { orderId: { in: orderIds } },
         data: { paymentStatus: 'completed' },
@@ -322,20 +276,18 @@ export class PaymentsService {
     };
   }
 
-  async validateVoucher(code: string, examId: number) {
+  async validateVoucher(code: string, examPackageId: number) {
     const now = new Date();
 
     const coupon = await this.prisma.coupons.findUnique({
       where: { couponCode: code.toUpperCase() },
     });
 
-    const exam = await this.prisma.exams.findUnique({
-      where: { id: examId },
+    const pkg = await this.prisma.examPackages.findUnique({
+      where: { id: examPackageId },
     });
 
-    // --- VALIDASI DENGAN FORMAT CUSTOM ---
-
-    if (!exam) {
+    if (!pkg) {
       throw new NotFoundException({
         statusCode: 404,
         error: 'Not Found',
@@ -379,15 +331,12 @@ export class PaymentsService {
       });
     }
 
-    // --- KALKULASI ---
-    const originalPrice = Number(exam.price);
+    const originalPrice = Number(pkg.price);
     let discountAmount = 0;
 
     if (coupon.discountType === 'percentage') {
-      // Hitung berdasarkan persen
       discountAmount = (originalPrice * Number(coupon.discountValue)) / 100;
     } else {
-      // Hitung berdasarkan nominal tetap
       discountAmount = Number(coupon.discountValue);
     }
 
@@ -396,8 +345,8 @@ export class PaymentsService {
     return {
       message: 'Voucher berhasil dipasang',
       summary: {
-        examName: exam.examName,
-        originalPrice: originalPrice,
+        examName: pkg.examName,
+        originalPrice,
         discount: discountAmount,
         totalPay: finalPrice,
         couponUsed: coupon.couponCode,

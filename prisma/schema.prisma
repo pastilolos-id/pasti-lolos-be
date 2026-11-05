@@ -58,8 +58,10 @@ model Users {
   userCourses                         UserCourses[]
   progressTracking                    ProgressTracking[]
   examsCreatedBy                      Exams[]             @relation("ExamCreatedBy")
+  examPackagesCreatedBy               ExamPackages[]      @relation("ExamPackageCreatedBy")
   examQuestions                       ExamQuestions[]     @relation("ExamQuestionAddedBy")
   userExams                           UserExams[]
+  userExamPackages                    UserExamPackages[]
   userExamAnswersGrader               UserExamAnswers[]   @relation("UserExamAnswerGrader")
   userExamAnswersLastModified         UserExamAnswers[]   @relation("UserExamAnswerLastModifiedBy")
   notificationsReceived               Notifications[]     @relation("NotificationsReceived")
@@ -128,6 +130,7 @@ model Subjects {
   questions             Questions[]
   courses               Courses[]
   exams                 Exams[]
+  examPackages          ExamPackages[]
   lastReviewedByUser    Users?          @relation("SubjectLastReviewedBy", fields: [lastReviewedBy], references: [id])
 
   @@map("subjects")
@@ -554,14 +557,55 @@ model ProgressTracking {
   @@map("progress_tracking")
 }
 
+model ExamPackages {
+  id                     Int                @id @default(autoincrement())
+  examName               String             @map("exam_name") @db.VarChar(255)
+  description            String?
+  subjectId              Int                @map("subject_id")
+  durationMinutes        Int                @map("duration_minutes")
+  startTime              DateTime?          @map("start_time") @db.Timestamptz(6)
+  endTime                DateTime?          @map("end_time") @db.Timestamptz(6)
+  totalQuestions         Int?               @default(0) @map("total_questions")
+  examType               String             @map("exam_type") @db.VarChar(50)
+  status                 String?            @default("draft") @db.VarChar(50)
+  price                  Decimal?           @default(0.00) @db.Decimal(10, 2)
+  availableUntil         DateTime?          @map("available_until") @db.Timestamptz(6)
+  createdByUserId        Int                @map("created_by_user_id")
+  showResultsImmediately Boolean?           @default(false) @map("show_results_immediately")
+  feedbackLevel          String?            @map("feedback_level") @db.VarChar(50)
+  certificationOnPass    Boolean?           @default(false) @map("certification_on_pass")
+  metadataJson           Json?              @map("metadata_json")
+  internalNotes          String?            @map("internal_notes")
+  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  subject                Subjects           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdByUser          Users              @relation("ExamPackageCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  exams                  Exams[]
+  userExamPackages       UserExamPackages[]
+
+  @@map("exam_packages")
+}
+
+model UserExamPackages {
+  id             Int          @id @default(autoincrement())
+  userId         Int          @map("user_id")
+  examPackageId  Int          @map("exam_package_id")
+  status         String?      @default("not_started") @db.VarChar(50)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user           Users        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  examPackage    ExamPackages @relation(fields: [examPackageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, examPackageId])
+  @@map("user_exam_packages")
+}
+
 model Exams {
   id                     Int             @id @default(autoincrement())
   examName               String          @map("exam_name") @db.VarChar(255)
   description            String?
   subjectId              Int             @map("subject_id")
-  packageId              Int?            @map("package_id")
-  parentPackage          Exams?          @relation("ExamToPackage", fields: [packageId], references: [id])
-  subExams               Exams[]         @relation("ExamToPackage")
+  examPackageId          Int             @map("exam_package_id")
   durationMinutes        Int             @map("duration_minutes")
   startTime              DateTime?       @map("start_time") @db.Timestamptz(6)
   endTime                DateTime?       @map("end_time") @db.Timestamptz(6)
@@ -570,7 +614,6 @@ model Exams {
   attemptsAllowed        Int?            @default(1) @map("attempts_allowed")
   examType               String          @map("exam_type") @db.VarChar(50) // ENUM 'tryout', 'quiz', 'final_exam', 'practice'
   status                 String?         @default("draft") @db.VarChar(50) // ENUM 'draft', 'published', 'closed', 'archived'
-  price                  Decimal?        @default(0.00) @db.Decimal(10, 2)
   availableUntil         DateTime?       @map("available_until") @db.Timestamptz(6)
   createdByUserId        Int             @map("created_by_user_id")
   randomizeQuestions     Boolean?        @default(true) @map("randomize_questions")
@@ -584,6 +627,7 @@ model Exams {
   createdAt              DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt              DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   subject                Subjects        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  examPackage            ExamPackages    @relation(fields: [examPackageId], references: [id], onDelete: Restrict)
   createdByUser          Users           @relation("ExamCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   examQuestions          ExamQuestions[]
   userExams              UserExams[]

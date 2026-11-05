@@ -146,9 +146,16 @@ export class BankSoalController {
   }
 
   @Get('admin/all')
-  @Roles('2', '3')
+  @Roles('1','2', '3')
   @ApiOperation({ summary: 'Admin: List semua bank soal (bisa filter status)' })
   adminGetAll(@Query('status') status?: string) {
+    return this.bankSoalService.getAllBankSoal(status);
+  }
+
+  @Get('student/all')
+  @Roles('1')
+  @ApiOperation({ summary: 'Student: List semua bank soal (bisa filter status)' })
+  studentGetAll(@Query('status') status?: string) {
     return this.bankSoalService.getAllBankSoal(status);
   }
 

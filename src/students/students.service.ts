@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ExamReviewService } from '../exams/exam-review.service';
@@ -24,6 +25,25 @@ export interface ActivityMeta {
   lastPage: number;
   limit: number;
 }
+
+type UserExamActivityRow = Prisma.UserExamsGetPayload<{
+  include: {
+    exam: {
+      include: {
+        subject: { select: { subjectName: true } };
+        examPackage: {
+          include: {
+            subject: { select: { subjectName: true } };
+            exams: {
+              select: { _count: { select: { examQuestions: true } } };
+            };
+          };
+        };
+        _count: { select: { examQuestions: true } };
+      };
+    };
+  };
+}>;
 
 @Injectable()
 export class StudentsService {
@@ -48,13 +68,9 @@ export class StudentsService {
             tags: true,
           },
         }),
-
-        // 2) Flash sale cards (paket utama yang published)
-        this.prisma.exams.findMany({
-          where: {
-            status: 'published',
-            packageId: null,
-          },
+        // 2) Flash sale cards (exam packages published)
+        this.prisma.examPackages.findMany({
+          where: { status: 'published' },
           take: 3,
           select: {
             id: true,
@@ -82,8 +98,8 @@ export class StudentsService {
               select: {
                 id: true,
                 examName: true,
-                packageId: true,
-                parentPackage: { select: { id: true, examName: true } },
+                examPackageId: true,
+                examPackage: { select: { id: true, examName: true } },
               },
             },
           },
@@ -107,8 +123,8 @@ export class StudentsService {
               select: {
                 id: true,
                 examName: true,
-                packageId: true,
-                parentPackage: { select: { id: true, examName: true } },
+                examPackageId: true,
+                examPackage: { select: { id: true, examName: true } },
               },
             },
           },
@@ -134,8 +150,8 @@ export class StudentsService {
         exam: {
           id: number;
           examName: string;
-          packageId: number | null;
-          parentPackage: { id: number; examName: string } | null;
+          examPackageId: number;
+          examPackage: { id: number; examName: string };
         };
       }>,
     ) => {
@@ -157,7 +173,7 @@ export class StudentsService {
       let seenColumnCounter = 0;
 
       for (const entry of rows) {
-        const packageId = entry.exam.packageId ?? entry.exam.id;
+        const packageId = entry.exam.examPackageId;
         const mapKey = `${entry.userId}:${packageId}`;
         const existing = byUserAndPackage.get(mapKey);
         const group = existing ?? {
@@ -286,17 +302,18 @@ export class StudentsService {
       };
     }
 
-    const examIds = orders.flatMap((order) =>
-      order.orderItems.map((item) => item.itemId),
-    );
+    const packageIds = [
+      ...new Set(
+        orders.flatMap((order) => order.orderItems.map((item) => item.itemId)),
+      ),
+    ];
 
-    const exams = await this.prisma.exams.findMany({
-      where: { id: { in: examIds } },
+    const packages = await this.prisma.examPackages.findMany({
+      where: { id: { in: packageIds } },
       include: { subject: true },
     });
 
-    // 2. Cek lagi kalau record order ada tapi link ke exams-nya bermasalah (jarang tapi jaga-jaga)
-    if (exams.length === 0) {
+    if (packages.length === 0) {
       return {
         message: 'Belum ada ujian yang tersedia untuk akun Anda.',
         data: [],
@@ -305,7 +322,7 @@ export class StudentsService {
 
     return {
       message: 'Success.',
-      data: exams,
+      data: packages,
     };
   }
 
@@ -565,83 +582,55 @@ export class StudentsService {
   async getUserActivity(userId: number, page = 1, limit = 10) {
     const skip = (page - 1) * limit;
 
-    const allUserExams = await this.prisma.userExams.findMany({
-      where: { userId },
-      include: {
-        exam: {
-          include: {
-            subject: { select: { subjectName: true } },
-            parentPackage: {
-              include: {
-                subject: { select: { subjectName: true } },
-                _count: { select: { examQuestions: true } },
+    const allUserExams: UserExamActivityRow[] =
+      await this.prisma.userExams.findMany({
+        where: { userId },
+        include: {
+          exam: {
+            include: {
+              subject: { select: { subjectName: true } },
+              examPackage: {
+                include: {
+                  subject: { select: { subjectName: true } },
+                  exams: {
+                    select: { _count: { select: { examQuestions: true } } },
+                  },
+                },
               },
+              _count: { select: { examQuestions: true } },
             },
-            _count: { select: { examQuestions: true } },
           },
         },
-      },
-      orderBy: { startTime: 'desc' },
-    });
+        orderBy: { startTime: 'desc' },
+      });
 
-    const parentIds = [
-      ...new Set(
-        allUserExams
-          .map((ue) => ue.exam.packageId)
-          .filter((id): id is number => id !== null),
-      ),
-    ];
-
-    const allSubAttempts =
-      parentIds.length > 0
-        ? await this.prisma.userExams.findMany({
-            where: {
-              userId,
-              exam: { packageId: { in: parentIds } },
-            },
-            select: {
-              id: true,
-              score: true,
-              status: true,
-              endTime: true,
-              startTime: true,
-              exam: {
-                select: { id: true, examName: true, packageId: true },
-              },
-            },
-            orderBy: { startTime: 'desc' },
-          })
-        : [];
-
-    const latestSubAttemptsByPackage = (packageId: number) => {
-      const byExamId = new Map<number, (typeof allSubAttempts)[number]>();
-      for (const sub of allSubAttempts) {
-        if (sub.exam.packageId !== packageId) continue;
-        if (!byExamId.has(sub.exam.id)) byExamId.set(sub.exam.id, sub);
-      }
-      return [...byExamId.values()].sort((a, b) => a.exam.id - b.exam.id);
-    };
-
-    const packageAttemptsByParentId = new Map<
-      number,
-      (typeof allUserExams)[number][]
-    >();
+    const latestByPackageAndExam = new Map<string, UserExamActivityRow>();
     for (const ue of allUserExams) {
-      if (ue.exam.packageId === null) continue;
-      const pid = ue.exam.packageId;
-      const list = packageAttemptsByParentId.get(pid) ?? [];
-      list.push(ue);
-      packageAttemptsByParentId.set(pid, list);
+      const key = `${ue.exam.examPackageId}:${ue.exam.id}`;
+      if (!latestByPackageAndExam.has(key)) {
+        latestByPackageAndExam.set(key, ue);
+      }
     }
 
-    const packageRows = [...packageAttemptsByParentId.entries()].map(
-      ([parentId, attempts]) => {
-        const parent = attempts[0].exam.parentPackage;
-        if (!parent) {
-          return null;
-        }
+    const byPackageId = new Map<number, UserExamActivityRow[]>();
+    for (const ue of allUserExams) {
+      const pid = ue.exam.examPackageId;
+      const list = byPackageId.get(pid) ?? [];
+      if (!list.some((x) => x.examId === ue.examId)) {
+        list.push(ue);
+      }
+      byPackageId.set(pid, list);
+    }
 
-        const dedupedSubs = latestSubAttemptsByPackage(parentId);
+    const combined = [...byPackageId.entries()]
+      .map(([packageId, attempts]) => {
+        const parent = attempts[0]?.exam.examPackage;
+        if (!parent) return null;
+
+        const dedupedSubs = [...latestByPackageAndExam.values()].filter(
+          (ue) => ue.exam.examPackageId === packageId,
+        );
+
         const subExams = dedupedSubs.map((sub) => ({
           userExamId: sub.id,
           examName: sub.exam.examName,
@@ -655,12 +644,9 @@ export class StudentsService {
           0,
         );
 
-        const myStatus = this.mergePackageActivityStatus(
-          dedupedSubs.map((s) => s.status),
-        );
-
-        const date = new Date(
-          Math.max(...attempts.map((a) => new Date(a.startTime).getTime())),
+        const questionCount = parent.exams.reduce(
+          (sum, e) => sum + e._count.examQuestions,
+          0,
         );
 
         return {
@@ -674,58 +660,19 @@ export class StudentsService {
           subject: {
             subjectName: parent.subject?.subjectName || 'Umum',
           },
-          myStatus,
+          myStatus: this.mergePackageActivityStatus(
+            dedupedSubs.map((s) => s.status),
+          ),
           myScore,
-          date,
+          date: new Date(
+            Math.max(...attempts.map((a) => new Date(a.startTime).getTime())),
+          ),
           subExams,
-          _count: {
-            examQuestions: parent._count?.examQuestions ?? 0,
-          },
+          _count: { examQuestions: questionCount },
         };
-      },
-    );
-
-    // Jangan tampilkan UserExam untuk exam parent paket jika baris paket sudah
-    // dibuat dari sub-exams (parent dan sub punya id berbeda di DB; yang parent packageId null).
-    const standaloneRows = allUserExams
-      .filter(
-        (ue) =>
-          ue.exam.packageId === null &&
-          !packageAttemptsByParentId.has(ue.exam.id),
-      )
-      .map((ue) => ({
-        id: ue.exam.id,
-        userExamId: ue.id,
-        examName: ue.exam.examName,
-        description: ue.exam.description,
-        examType: ue.exam.examType,
-        price: Number(ue.exam.price || 0),
-        durationMinutes: ue.exam.durationMinutes,
-        subject: {
-          subjectName: ue.exam.subject?.subjectName || 'Umum',
-        },
-        myStatus: ue.status,
-        myScore: ue.score ? Number(ue.score) : 0,
-        date: ue.startTime,
-        subExams: [] as {
-          userExamId: number;
-          examName: string;
-          score: number;
-          status: string | null;
-          finishedAt: Date | null;
-        }[],
-        _count: {
-          examQuestions: ue.exam._count?.examQuestions ?? 0,
-        },
-      }));
-
-    const packageActivityRows = packageRows.filter(
-      (row): row is NonNullable<(typeof packageRows)[number]> => row !== null,
-    );
-
-    const combined = [...packageActivityRows, ...standaloneRows].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const total = combined.length;
     const data = combined.slice(skip, skip + limit);

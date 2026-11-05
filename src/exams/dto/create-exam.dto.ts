@@ -9,13 +9,13 @@ import {
 } from 'class-validator';
 
 export class CreateExamDto {
-  @IsString() // Pastikan ini IsString, bukan IsNumberString
+  @IsString()
   @IsNotEmpty()
   examName!: string;
 
-  // @IsNotEmpty()
-  @IsOptional()
-  packageId?: string | number;
+  @IsNotEmpty()
+  @IsNumberString()
+  examPackageId!: string | number;
 
   @IsOptional()
   @IsString()
@@ -26,7 +26,6 @@ export class CreateExamDto {
   subjectId!: string;
 
   @IsNotEmpty()
-  // Pakai IsString atau IsNumberString tergantung gimana lo kirim dari Postman
   durationMinutes!: string | number;
 
   @IsOptional()
@@ -51,10 +50,6 @@ export class CreateExamDto {
 
   @IsOptional()
   @IsNumberString()
-  price?: string;
-
-  @IsOptional()
-  @IsNumberString()
   attemptsAllowed?: string;
 
   @IsOptional()
@@ -62,6 +57,7 @@ export class CreateExamDto {
   randomizeQuestions?: boolean;
 
   @IsOptional()
-  // Biar error "should not exist" hilang, tambahkan ini:
-  metadataJson?: any;
+  metadataJson?: unknown;
 }
+
+export type UpdateExamDto = Partial<CreateExamDto>;

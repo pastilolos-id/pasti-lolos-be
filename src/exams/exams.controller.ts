@@ -21,6 +21,7 @@ import {
 } from '@nestjs/common';
 import { ApiConsumes, ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { ExamsService } from './exams.service';
+import { ExamPackagesService } from './exam-packages.service';
 import { ExamReviewService } from './exam-review.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -48,6 +49,7 @@ export class ExamsController {
   // prisma: any;
   constructor(
     private readonly examsService: ExamsService,
+    private readonly examPackagesService: ExamPackagesService,
     private readonly examReviewService: ExamReviewService,
   ) {}
 
@@ -71,7 +73,7 @@ export class ExamsController {
   async getPackage(@Param('id') id: string, @Req() req: RequestWithUser) {
     const user = req.user;
     if (!user?.userId) throw new UnauthorizedException('User tidak valid');
-    return this.examsService.getPackageDetail(+id, user.userId);
+    return this.examPackagesService.getPackageDetail(+id, user.userId);
   }
   // async getPackageDetail(@Param('id') id: string) {
   //   return this.examsService.getPackageDetail(+id);
@@ -109,15 +111,31 @@ export class ExamsController {
   //     req.user.userId // Ambil dari JWT payload
   //   );
   // }
-  findAllPublished(@Query('category') category?: string) {
-    // Ubah di sini
-    return this.examsService.findAllPublished(category);
+  findAllPublished(
+    @Query('category') category?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '10',
+  ) {
+    return this.examPackagesService.findAllPublished(
+      category,
+      +page || 1,
+      +limit || 10,
+    );
   }
   @Get('admin')
   @Roles('1', '2', '3')
-  findAllPublishedADMIN(@Query('category') category?: string) {
-    // Ubah di sini
-    return this.examsService.findAllPublishedAdmin(category);
+  findAllPublishedADMIN(
+    @Query('category') category?: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '10',
+    @Query('status') status?: string,
+  ) {
+    return this.examPackagesService.findAllExamPackagesAdmin(
+      category,
+      +page || 1,
+      +limit || 10,
+      status,
+    );
   }
 
   @Get('get/:id')
@@ -210,7 +228,7 @@ export class ExamsController {
   // --- CHECKOUT EXAM ---
   @Get('checkout-preview/:examId')
   async getPreview(@Param('examId') examId: string) {
-    return this.examsService.getExamCheckoutPreview(+examId);
+    return this.examPackagesService.getExamCheckoutPreview(+examId);
   }
 
   @Post('checkout')
@@ -232,7 +250,7 @@ export class ExamsController {
   ) {
     if (!file) throw new BadRequestException('Bukti pembayaran wajib diunggah');
 
-    return this.examsService.processExamCheckout(
+    return this.examPackagesService.processExamCheckout(
       +body.examId,
       this.requireUserId(req),
       body.paymentMethod,
@@ -322,7 +340,7 @@ export class ExamsController {
   @Get('checkout-preview/:id')
   @Roles('1', '2', '3')
   async getCheckoutPreview(@Param('id') id: string) {
-    return this.examsService.getExamCheckoutPreview(+id);
+    return this.examPackagesService.getExamCheckoutPreview(+id);
   }
 
   @Get(':id/get-score') // Endpoint: /exams/7/get-score
@@ -338,7 +356,7 @@ export class ExamsController {
     @Param('id', ParseIntPipe) packageId: number,
     @Req() req: RequestWithUser,
   ) {
-    return this.examsService.getScoreByPackage(
+    return this.examPackagesService.getScoreByPackage(
       packageId,
       this.requireUserId(req),
     );

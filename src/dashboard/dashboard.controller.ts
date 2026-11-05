@@ -101,8 +101,6 @@ export class DashboardController {
     description: 'Jumlah top sale yang ditampilkan (default: 10)',
   })
   async getTopSales(@Query('limit') limit?: string) {
-    return this.dashboardService.getTopSales(
-      limit ? parseInt(limit, 10) : 10,
-    );
+    return this.dashboardService.getTopSales(limit ? parseInt(limit, 10) : 10);
   }
 }

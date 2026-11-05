@@ -148,7 +148,10 @@ export class DashboardService {
     const revenueByDay = new Map<number, number>();
     for (const order of orders) {
       const day = order.orderDate.getDay();
-      revenueByDay.set(day, (revenueByDay.get(day) ?? 0) + Number(order.grandTotal));
+      revenueByDay.set(
+        day,
+        (revenueByDay.get(day) ?? 0) + Number(order.grandTotal),
+      );
     }
 
     const mondayFirst = [1, 2, 3, 4, 5, 6, 0];
@@ -168,8 +171,18 @@ export class DashboardService {
 
   private async getMonthlyRevenue(now: Date) {
     const monthNames = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
     ];
 
     const year = now.getFullYear();
@@ -228,9 +241,7 @@ export class DashboardService {
       0,
     );
 
-    const sortedYears = [...revenueByYear.entries()].sort(
-      ([a], [b]) => a - b,
-    );
+    const sortedYears = [...revenueByYear.entries()].sort(([a], [b]) => a - b);
 
     return {
       totalPenjualan: totalRevenue,
