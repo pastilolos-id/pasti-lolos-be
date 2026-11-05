@@ -28,11 +28,19 @@ services:
             - .env.production
         environment:
             NODE_ENV: production
-        ports:
-            - "4000:4000"
+        labels:
+            - traefik.enable=true
+            - traefik.docker.network=traefik_default
+            - traefik.http.routers.pasti-lolos-be.rule=Host(`api.pastilolos.id`)
+            - traefik.http.routers.pasti-lolos-be.entrypoints=websecure
+            - traefik.http.routers.pasti-lolos-be.tls=true
+            - traefik.http.routers.pasti-lolos-be.tls.certresolver=letsencrypt
+            - traefik.http.routers.pasti-lolos-be.service=pasti-lolos-be
+            - traefik.http.services.pasti-lolos-be.loadbalancer.server.port=4000
         networks:
             pasti-lolos-net-be:
                 ipv4_address: 172.20.0.3
+            traefik_default: {}
         depends_on:
             pasti-lolos-db-prod:
                 condition: service_healthy
@@ -44,3 +52,6 @@ networks:
         ipam:
             config:
                 - subnet: 172.20.0.0/16
+    traefik_default:
+        external: true
+        name: traefik_default
