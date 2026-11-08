@@ -101,7 +101,7 @@ export class AuthController {
       });
 
       // 4. Redirect ke halaman utama (Home/Dashboard)
-      return res.redirect(`https://www.pastilolos.id/home`);
+      return res.redirect('https://pastilolos.id/home');
     } catch (error) {
       // KALO GAGAL:
       console.error('Google Auth Error:', error);
@@ -111,37 +111,9 @@ export class AuthController {
       const errorMessage = encodeURIComponent(
         'Login Google gagal, silakan coba lagi.',
       );
-      return res.redirect(`http://www.pastilolos.id/login?error=${errorMessage}`);
+      return res.redirect(`https://pastilolos.id/login?error=${errorMessage}`);
     }
   }
-  // @Get('google/callback')
-  // @UseGuards(AuthGuard('google'))
-  // async googleAuthRedirect(
-  //   @Req() req: express.Request,
-  //   @Res() res: express.Response,
-  // ) {
-  //   const user = req.user;
-
-  //   // Cek jika user tidak ada, langsung throw error
-  //   if (!user) {
-  //     throw new UnauthorizedException('Google authentication failed');
-  //   }
-
-  //   // Sekarang TypeScript tahu 'user' pasti ada dan bukan undefined
-  //   // Kita cast ke interface yang lu buat sebelumnya
-  //   const result = await this.authService.validateGoogleUser(
-  //     user as GoogleUserPayload,
-  //   );
-
-  //   res.cookie('token', result.accessToken, {
-  //     httpOnly: true,
-  //     secure: process.env.NODE_ENV === 'production',
-  //     sameSite: 'lax',
-  //     maxAge: 7 * 24 * 60 * 60 * 1000,
-  //   });
-
-  //   return res.redirect(`http://localhost:3000/home`);
-  // }
 
   @Get('logout')
   @UseGuards(ThrottlerGuard)
