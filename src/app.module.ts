@@ -1,5 +1,5 @@
 // src/app.module.ts
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common'; // <-- Tambahkan NestModule & MiddlewareConsumer
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -14,25 +14,21 @@ import { OrdersModule } from './orders/orders.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { TransactionsModule } from './transactions/transactions.module';
+import { ForceHttpsMiddleware } from './common/middleware/force-https.middleware';
 import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
     ThrottlerModule.forRoot([
       {
-        ttl: 60000, // Time to live (dalam milidetik) = 60 detik
-        limit: 200, // Maksimal 200 request per TTL
+        ttl: 60000, 
+        limit: 200, 
       },
     ]),
-    // 1. Module untuk membaca file .env
     ConfigModule.forRoot({
-      isGlobal: true, // Agar bisa diakses di semua module tanpa import ulang
+      isGlobal: true, 
     }),
-
-    // 2. Module Database kita
     PrismaModule,
-
-    // 3. Module Autentikasi kita
     AuthModule,
     CoursesModule,
     ExamsModule,
@@ -49,8 +45,14 @@ import { APP_GUARD } from '@nestjs/core';
   providers: [
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard, // Pasang satpam secara Global
+      useClass: ThrottlerGuard, 
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule { // <-- Tambahkan implements NestModule
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(ForceHttpsMiddleware)
+      .forRoutes('*'); // Menerapkan middleware ke seluruh rute aplikasi
+  }
+}
