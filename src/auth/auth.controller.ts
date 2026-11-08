@@ -101,7 +101,7 @@ export class AuthController {
       });
 
       // 4. Redirect ke halaman utama (Home/Dashboard)
-      return res.redirect(`http://localhost:3000/home`);
+      return res.redirect(`https://www.pastilolos.id/home`);
     } catch (error) {
       // KALO GAGAL:
       console.error('Google Auth Error:', error);
@@ -111,7 +111,7 @@ export class AuthController {
       const errorMessage = encodeURIComponent(
         'Login Google gagal, silakan coba lagi.',
       );
-      return res.redirect(`http://localhost:3000/login?error=${errorMessage}`);
+      return res.redirect(`http://www.pastilolos.id/login?error=${errorMessage}`);
     }
   }
   // @Get('google/callback')
