@@ -99,7 +99,7 @@ export class AuthController {
         secure: true,
         sameSite: 'none', //lax, // Sesuaikan dengan kebutuhan frontend (lax atau none)
         maxAge: 7 * 24 * 60 * 60 * 1000,
-        // domain: '.pastilolos.id', // Opsional: Buka komentar ini jika domain FE dan BE ingin berbagi cookie secara global di root domain
+        domain: '.pastilolos.id', // Opsional: Buka komentar ini jika domain FE dan BE ingin berbagi cookie secara global di root domain
       });
 
       // 4. Redirect ke halaman utama (Home/Dashboard)
