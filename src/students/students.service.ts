@@ -140,6 +140,14 @@ export class StudentsService {
       return firstWord.toUpperCase();
     };
 
+    const maskName = (fullName: string) => {
+      const trimmed = fullName.trim();
+      if (trimmed.length <= 2) {
+        return '*'.repeat(trimmed.length);
+      }
+      return trimmed[0] + '...' + trimmed[trimmed.length - 1];
+    };
+
     const buildPackageLeaderboard = (
       rows: Array<{
         userId: number;
@@ -177,7 +185,7 @@ export class StudentsService {
         const mapKey = `${entry.userId}:${packageId}`;
         const existing = byUserAndPackage.get(mapKey);
         const group = existing ?? {
-          name: entry.user.firstName || entry.user.username,
+          name: maskName(entry.user.firstName || entry.user.username),
           bySubExam: new Map<
             number,
             {
