@@ -68,7 +68,7 @@ export class StudentsService {
             tags: true,
           },
         }),
-        // 2) Flash sale cards (exam packages published)
+        // 2) Flash sale cards (exam packages published) with related exams
         this.prisma.examPackages.findMany({
           where: { status: 'published' },
           take: 3,
@@ -77,6 +77,12 @@ export class StudentsService {
             examName: true,
             price: true,
             examType: true,
+            exams: {
+              select: {
+                id: true,
+                examName: true,
+              },
+            },
           },
         }),
 
@@ -275,6 +281,7 @@ export class StudentsService {
             originalPrice,
             salePrice,
             ctaText: 'Beli Sekarang',
+            subjects: item.exams.map((ex) => ex.examName), // Menampilkan list ujian/subtes (misal: TWK, TIU, TKP)
           };
         }),
       },
