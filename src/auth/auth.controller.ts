@@ -19,6 +19,12 @@ import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import type { Request, Response } from 'express';
 import type { JwtRequestUser } from 'src/types/express';
+import {
+  clearSessionCookies,
+  googleSessionCookieOptions,
+  passwordSessionCookieOptions,
+  AUTH_TOKEN_COOKIE,
+} from './auth-cookie';
 
 interface GoogleUserPayload {
   googleId: string;
@@ -53,13 +59,11 @@ export class AuthController {
       loginDto.password,
     );
 
-    // 2. Set Cookie
-    res.cookie('token', result.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 hari
-    });
+    res.cookie(
+      AUTH_TOKEN_COOKIE,
+      result.accessToken,
+      passwordSessionCookieOptions(),
+    );
 
     // 3. Kembalikan data user (tanpa token di body juga gak apa-apa karena sudah di cookie)
     return {
@@ -92,15 +96,11 @@ export class AuthController {
         user as GoogleUserPayload,
       );
 
-      // 3. Set Cookie jika berhasil
-      res.cookie('token', result.accessToken, {
-        httpOnly: true,
-        //secure: process.env.NODE_ENV === 'production',
-        secure: true,
-        sameSite: 'none', //lax, // Sesuaikan dengan kebutuhan frontend (lax atau none)
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-        domain: '.pastilolos.id', // Opsional: Buka komentar ini jika domain FE dan BE ingin berbagi cookie secara global di root domain
-      });
+      res.cookie(
+        AUTH_TOKEN_COOKIE,
+        result.accessToken,
+        googleSessionCookieOptions(),
+      );
 
       // 4. Redirect ke halaman utama (Home/Dashboard)
       return res.redirect('https://pastilolos.id/home');
@@ -121,13 +121,7 @@ export class AuthController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   logout(@Res({ passthrough: true }) res: Response) {
-    // 1. Hapus cookie dengan cara menimpa nilainya dan set expired ke masa lalu
-    res.cookie('token', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      expires: new Date(0), // Set ke tanggal 1 Januari 1970
-    });
+    clearSessionCookies(res);
 
     // 2. Return response sukses
     return {
